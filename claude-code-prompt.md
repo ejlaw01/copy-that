@@ -720,6 +720,14 @@ NEXT_PUBLIC_TURNSTILE_SITE_KEY=
 - [ ] Deploy to Vercel, configure `copy.bitlore.io` subdomain
 - [ ] Test full user flow end-to-end
 
+### Week 3 (Post-Launch Hardening)
+- [ ] Enable pgvector in Supabase, create `brand_embeddings` table
+- [ ] Embedding generation at brand context creation time (chunk tone_examples, source_content, competitor_analysis)
+- [ ] Similarity search retrieval step before generation — dynamic voice context per component type
+- [ ] Eval harness: fixtures (5-10 brand contexts × component types), runner script, LLM-as-judge scoring
+- [ ] Baseline eval run against current prompts, store results
+- [ ] Optional: review agent (second LLM call post-generation for voice/constraint check)
+
 ---
 
 ## v2 Scope: Collaborative Editor
@@ -745,12 +753,16 @@ Upgrade the v1 generate/regenerate pattern to a split-view collaborative editor.
 - AI responds with inline suggestions, one-click accept into the editor
 - Resolved notes dismissed to keep panel clean
 
-### AI Interaction Model Shift
+### AI Interaction Model Shift (Agent Architecture)
 
-- v1: "Generate content for this component" → full generation
-- v2: "Given this current content and this feedback, propose specific edits" → structured diff
-- Prompt changes from "write this" to "here is the current content + user feedback → propose changes as JSON diff with reasoning"
-- Diffs applied as tracked changes, preserving user edits
+v1 is a pipeline: generate → validate → retry. v2 introduces a genuine agent pattern where the AI decides what action to take based on user feedback.
+
+- "Make this warmer" → `rewrite_section` tool (modify tone, preserve structure)
+- "Too long" → `trim_to_constraint` tool (condense, preserve meaning)
+- "Give me three alternatives" → `generate_alternatives` tool (produce variations)
+- "This doesn't match our voice" → `retrieve_voice_context` tool (pull fresh brand examples via RAG) → then rewrite
+
+Implementation uses Anthropic's tool-use API. The agent receives current document content + user feedback, decides which tools to call, executes them, and returns a structured diff applied as tracked changes in TipTap. See the "Agents" section in the AI Engineering Addendum for the full tool definitions.
 
 ### Why v2 Before the Site Builder
 
@@ -832,6 +844,99 @@ And `ai_notes` gains `cross_page_flags`:
 7. **v1 data model supports v2 and v3 without migration.** v2 (collaborative editor) adds no new tables — it enhances the existing `copy_block` interaction. v3 (site builder) renames `brand_context` to `project` (multi-brand-context from v1 naturally becomes multi-project), adds `page` table, and adds `page_id` on `copy_block`. No existing data is restructured.
 
 8. **Multiple brand voices from day one.** Persistent brand voice is the core differentiator. Locking users into one voice undermines it. Supporting multiple brand contexts in v1 is a small data model change that strengthens the product, the email capture funnel, and the natural evolution into v3's multi-project site builder.
+
+---
+
+## Addendum: AI Engineering Stack (RAG, Agents, Evals)
+
+The existing architecture already demonstrates real AI engineering: structured output with validation/retry, constraint enforcement, multi-step LLM orchestration (URL extraction → voice profiling → constrained generation), and context management (voice profile as compressed retrieval). The additions below layer on three core AI Engineering concepts without requiring rearchitecture.
+
+### RAG — v1 Enhancement (Post-Core Loop)
+
+The voice profile is already a form of manual RAG — brand context compressed into a retrievable artifact injected at generation time. The upgrade makes retrieval dynamic and component-aware.
+
+**What changes:**
+
+Enable `pgvector` extension in Supabase (one-click). Add a `brand_embeddings` table:
+
+- `id` (uuid, primary key)
+- `brand_context_id` (foreign key)
+- `chunk_text` (text — the source content chunk)
+- `chunk_type` (enum: tone_example, source_content, competitor_analysis, voice_profile)
+- `embedding` (vector(1536) — or whatever dimension the embedding model uses)
+- `created_at` (timestamp)
+
+**How it works:**
+
+1. At brand context creation time (after voice extraction), chunk `tone_examples`, `source_content`, and `competitor_analysis` into meaningful segments and generate embeddings via a lightweight embedding model (Anthropic's or OpenAI's embedding endpoint).
+2. Store chunks + embeddings in `brand_embeddings`.
+3. At generation time, before building the prompt, embed the component type + its guidance text as a query vector. Run a similarity search against `brand_embeddings` for that brand context. Retrieve the 3-5 most relevant voice examples.
+4. The generation prompt changes from a static `{voice_profile}` injection to: the voice profile summary (still included for overall tone) + dynamically retrieved relevant examples. A hero headline generation pulls different voice examples than an about page body.
+
+**What this means for the product:** Generation quality improves because the LLM sees the most relevant voice context for each specific component, not a one-size-fits-all summary.
+
+**What this means for the portfolio:** You can talk about chunking strategies, embedding models, similarity search, and the tradeoff between static context injection and dynamic retrieval — all grounded in a real problem (voice profiles don't capture enough nuance for different component types).
+
+**Disruption level:** Low. Additive layer between voice extraction and generation. No schema changes to existing tables. No UI changes required (though you could surface "matched examples" in `ai_notes`). 2-3 days of work after the core loop is solid.
+
+### Evals — Parallel Workstream (Start Anytime)
+
+Evals don't change the architecture at all. They're a testing layer that wraps around the existing system.
+
+**What to build:**
+
+Create an `evals/` directory with:
+
+- **Fixtures:** 5-10 brand contexts covering different tones (corporate, playful, technical, warm, bilingual). For each, a set of component types to generate.
+- **Rubric:** For each brand context + component type combination: does it meet character constraints? (automated check). Does the voice match? (LLM-as-judge). Is it actually usable copy, not generic filler? (LLM-as-judge).
+- **Runner script:** Executes the generation pipeline against all fixtures, collects outputs, scores them.
+- **LLM-as-judge scoring:** A separate Claude call per output that rates voice consistency (1-5), constraint adherence (pass/fail), and copy quality (1-5). Use a cheaper model (Haiku) for judging to keep eval costs low.
+- **Score matrix output:** JSON or CSV showing scores per brand context × component type. Re-run after any prompt change to compare.
+
+**Optional: Admin eval dashboard** at `/admin/evals` showing historical eval runs and score trends. Portfolio gold — shows you think about AI quality systematically.
+
+**When to run evals:**
+- After any change to generation prompts
+- After adding the RAG retrieval layer (compare scores with/without RAG)
+- After changing models (e.g., testing Haiku vs. Sonnet for specific component types)
+- Before each deploy as a smoke test
+
+**Disruption level:** Zero. Sits outside application code entirely. Can be built in parallel with any other work.
+
+### Agents — v2 Architecture (Collaborative Editor)
+
+v1 is correctly scoped as a pipeline. Generate → validate → retry is orchestration, not an agent loop. Forcing agent patterns into v1 would over-complicate it.
+
+**Where agents fit naturally — v2's collaborative editing:**
+
+The "user gives feedback → AI proposes edits" loop is a genuine agent pattern. The AI needs to decide what action to take based on the feedback:
+
+- "Make this warmer" → rewrite action (modify tone, preserve structure)
+- "Too long" → trim action (condense, preserve meaning)
+- "Give me three alternatives" → branch action (generate variations)
+- "This doesn't match our voice" → re-retrieve action (pull fresh brand context via RAG, then rewrite)
+
+That decision-making step — where the model routes between different strategies based on input — is what makes it an agent rather than a pipeline.
+
+**Implementation approach for v2:**
+
+Use Anthropic's tool-use API. Define tools the agent can call:
+
+- `rewrite_section(text, instruction)` — modify specific text based on feedback
+- `trim_to_constraint(text, max_chars)` — condense while preserving meaning
+- `generate_alternatives(text, count)` — produce variations
+- `retrieve_voice_context(query)` — pull relevant brand examples via RAG
+- `check_voice_consistency(text, voice_profile)` — verify against brand voice
+
+The agent receives the current document content + user feedback, decides which tools to use, executes them, and returns a structured diff. Diffs are applied as tracked changes in TipTap.
+
+**Optional v1 addition — review agent:** A lightweight second LLM call after generation that checks the output against brand voice constraints before surfacing it to the user. Simple tool-use pattern (the agent has access to `voice_check` and `constraint_check` tools). One additional API call in the pipeline. Low disruption, gives you something concrete to talk about in interviews.
+
+**Disruption level for review agent:** Low — one additional API call. **Disruption level for full v2 agent loop:** Medium, but that's already planned work framed through an agent architecture lens.
+
+### Interview Framing
+
+The key insight: these aren't bolted-on concepts to check boxes. RAG solves a real problem (static voice profiles don't capture enough nuance for different component types). Evals solve a real problem (how do you know your generation prompts are actually good). Agents solve a real problem in v2 (the AI needs to decide what action to take based on user feedback). Every technical choice is grounded in a genuine product need.
 
 ---
 
