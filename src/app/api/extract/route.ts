@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as cheerio from "cheerio";
-import { prompt } from "@/lib/anthropic";
+import { prompt, ServiceUnavailableError } from "@/lib/anthropic";
 
 const MAX_BODY_SIZE = 1_000_000; // 1MB
 const FETCH_TIMEOUT = 10_000; // 10s
@@ -118,7 +118,13 @@ ${extractedText}`,
 
       return NextResponse.json({ analysis });
     }
-  } catch {
+  } catch (err) {
+    if (err instanceof ServiceUnavailableError) {
+      return NextResponse.json(
+        { error: err.message, service_unavailable: err.kind },
+        { status: 503 }
+      );
+    }
     return NextResponse.json(
       { error: "Analysis failed" },
       { status: 500 }

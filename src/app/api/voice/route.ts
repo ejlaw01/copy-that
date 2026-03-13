@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prompt } from "@/lib/anthropic";
+import { prompt, ServiceUnavailableError } from "@/lib/anthropic";
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -64,7 +64,13 @@ ${competitors ? `- Competitors/inspiration: ${competitors}` : ""}${contextBlock}
     );
 
     return NextResponse.json({ voice_profile });
-  } catch {
+  } catch (err) {
+    if (err instanceof ServiceUnavailableError) {
+      return NextResponse.json(
+        { error: err.message, service_unavailable: err.kind },
+        { status: 503 }
+      );
+    }
     return NextResponse.json(
       { error: "Voice extraction failed" },
       { status: 500 }

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prompt } from "@/lib/anthropic";
+import { prompt, ServiceUnavailableError } from "@/lib/anthropic";
 import {
   COMPONENT_TYPES,
   COMPONENT_TYPE_KEYS,
@@ -261,7 +261,13 @@ Respond with ONLY valid JSON matching this exact structure:
       }
 
       lastErrors = validation.errors;
-    } catch {
+    } catch (err) {
+      if (err instanceof ServiceUnavailableError) {
+        return NextResponse.json(
+          { error: err.message, service_unavailable: err.kind },
+          { status: 503 }
+        );
+      }
       if (attempt === MAX_RETRIES) {
         return NextResponse.json(
           { error: "Generation failed after retries" },

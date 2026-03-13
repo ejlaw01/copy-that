@@ -3,6 +3,7 @@
 import { useState, useCallback, useRef } from "react";
 import { ComponentEditor } from "@/components/ComponentEditor";
 import { Turnstile } from "@/components/Turnstile";
+import { ServiceUnavailable } from "@/components/ServiceUnavailable";
 import {
   COMPONENT_TYPES,
   COMPONENT_TYPE_KEYS,
@@ -38,6 +39,7 @@ export function GenerationWorkspace({ context, onGenerate }: GenerationWorkspace
   const [showNotes, setShowNotes] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [softLimit, setSoftLimit] = useState(false);
+  const [serviceDown, setServiceDown] = useState(false);
   const [history, setHistory] = useState<CopyBlock[]>(() => {
     const session = getSession();
     return session.copy_blocks.filter(
@@ -71,6 +73,13 @@ export function GenerationWorkspace({ context, onGenerate }: GenerationWorkspace
         }
         if (data.soft_limit) {
           setSoftLimit(true);
+        }
+        if (data.service_unavailable === "spend_limit") {
+          setServiceDown(true);
+          throw new Error(data.error);
+        }
+        if (data.service_unavailable === "temporary") {
+          throw new Error("The AI service is busy. Please try again in a moment.");
         }
         throw new Error(data.error || "Generation failed");
       }
@@ -348,6 +357,10 @@ export function GenerationWorkspace({ context, onGenerate }: GenerationWorkspace
             ))}
           </div>
         </div>
+      )}
+
+      {serviceDown && (
+        <ServiceUnavailable onDismiss={() => setServiceDown(false)} />
       )}
     </div>
   );

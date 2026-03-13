@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { BrandContext } from "@/lib/session-storage";
 import { newContextId, saveBrandContext } from "@/lib/session-storage";
+import { ServiceUnavailable } from "@/components/ServiceUnavailable";
 
 interface BrandContextFormProps {
   initial?: Partial<BrandContext>;
@@ -35,6 +36,7 @@ export function BrandContextForm({ initial, onComplete }: BrandContextFormProps)
     ...initial,
   });
   const [loading, setLoading] = useState(false);
+  const [serviceDown, setServiceDown] = useState(false);
 
   function update(fields: Partial<BrandContext>) {
     setForm((prev) => ({ ...prev, ...fields }));
@@ -91,6 +93,13 @@ export function BrandContextForm({ initial, onComplete }: BrandContextFormProps)
       if (voiceRes.ok) {
         const data = await voiceRes.json();
         form.voice_profile = data.voice_profile;
+      } else {
+        const data = await voiceRes.json();
+        if (data.service_unavailable === "spend_limit") {
+          setServiceDown(true);
+          setLoading(false);
+          return;
+        }
       }
 
       const ctx = form as BrandContext;
@@ -103,6 +112,9 @@ export function BrandContextForm({ initial, onComplete }: BrandContextFormProps)
 
   return (
     <div className="mx-auto max-w-xl">
+      {serviceDown && (
+        <ServiceUnavailable onDismiss={() => setServiceDown(false)} />
+      )}
       {/* Progress */}
       <div className="mb-8 flex items-center gap-2">
         {STEPS.map((s, i) => (
