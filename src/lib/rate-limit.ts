@@ -4,11 +4,14 @@ import { cookies } from "next/headers";
 
 const ANON_LIMIT = 6;
 const AUTH_DAILY_LIMIT = 50;
+const ANALYSIS_LIMIT = 100;
+const ANALYSIS_ANON_LIMIT = 10;
 
 // In-memory store for anonymous IP rate limiting
 // In production on Vercel, each serverless instance has its own memory,
 // so this is approximate — but sufficient for v1.
 const ipCounts = new Map<string, { count: number; resetAt: number }>();
+const analysisIpCounts = new Map<string, { count: number; resetAt: number }>();
 
 function getClientIp(req: NextRequest): string {
   return (
@@ -154,5 +157,34 @@ export async function incrementRateLimit(
     if (entry) {
       entry.count++;
     }
+  }
+}
+
+// Analysis rate limiting — in-memory only, no DB columns needed
+export function checkAnalysisRateLimit(req: NextRequest, isAuthenticated: boolean): RateLimitResult {
+  const ip = getClientIp(req);
+  const now = Date.now();
+  const dayMs = 24 * 60 * 60 * 1000;
+
+  let entry = analysisIpCounts.get(ip);
+  if (!entry || now > entry.resetAt) {
+    entry = { count: 0, resetAt: now + dayMs };
+    analysisIpCounts.set(ip, entry);
+  }
+
+  const limit = isAuthenticated ? ANALYSIS_LIMIT : ANALYSIS_ANON_LIMIT;
+
+  return {
+    allowed: entry.count < limit,
+    remaining: Math.max(0, limit - entry.count),
+    isAuthenticated,
+  };
+}
+
+export function incrementAnalysisRateLimit(req: NextRequest): void {
+  const ip = getClientIp(req);
+  const entry = analysisIpCounts.get(ip);
+  if (entry) {
+    entry.count++;
   }
 }

@@ -8,6 +8,7 @@ const supabaseAdmin = createClient(
 
 type EventType =
   | "generation"
+  | "analysis"
   | "voice_extraction"
   | "url_extraction"
   | "export"

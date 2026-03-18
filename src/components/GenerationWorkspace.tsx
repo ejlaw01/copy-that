@@ -196,6 +196,7 @@ export function GenerationWorkspace({
   });
 
   const [feedback, setFeedback] = useState("");
+  const [analyzing, setAnalyzing] = useState(false);
   const [showVersions, setShowVersions] = useState(false);
   const [expandedVersions, setExpandedVersions] = useState<Set<string>>(
     new Set(),
@@ -409,6 +410,44 @@ export function GenerationWorkspace({
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       e.preventDefault();
       handleGenerate();
+    }
+  }
+
+  async function handleAnalyze() {
+    if (!currentBlock || !context) return;
+    setAnalyzing(true);
+
+    try {
+      const currentText = docToPlainText(currentBlock.content as TipTapDoc);
+      const res = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          current_copy: currentText,
+          voice_profile: context.voice_profile,
+          business_name: context.business_name,
+          user_prompt: userPrompt,
+          turnstile_token: turnstileTokenRef.current,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Analysis failed");
+      }
+
+      const data = await res.json();
+      const notes = data.ai_notes as AiNotes;
+      setAiNotes(notes);
+
+      // Persist to current block in session storage
+      const updated = { ...currentBlock, ai_notes: notes };
+      setCurrentBlock(updated);
+      saveCopyBlock(updated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Analysis failed");
+    } finally {
+      setAnalyzing(false);
     }
   }
 
@@ -704,23 +743,36 @@ export function GenerationWorkspace({
       {/* AI area — notes + adjustments */}
       {currentBlock && (
         <div className="mt-6 rounded-lg bg-foreground/5 p-4 space-y-4">
-          {/* AI Notes — always visible */}
-          {aiNotes?.generation_reasoning && (
-            <div className="text-xs text-foreground/60 space-y-2">
-              <p>{aiNotes.generation_reasoning}</p>
-              {aiNotes.suggestions && aiNotes.suggestions.length > 0 && (
-                <div>
-                  <p className="font-medium text-foreground/50 mb-1">
-                    Suggestions:
-                  </p>
-                  <ul className="list-disc list-inside space-y-0.5">
-                    {aiNotes.suggestions.map((s, i) => (
-                      <li key={i}>{s}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+          {/* Analysis */}
+          {aiNotes?.generation_reasoning ? (
+            <div>
+              <label className="block text-sm font-medium text-foreground/70 mb-2">
+                Analysis
+              </label>
+              <div className="text-xs text-foreground/60 space-y-2">
+                <p>{aiNotes.generation_reasoning}</p>
+                {aiNotes.suggestions && aiNotes.suggestions.length > 0 && (
+                  <div>
+                    <p className="font-medium text-foreground/50 mb-1">
+                      Suggestions:
+                    </p>
+                    <ul className="list-disc list-inside space-y-0.5">
+                      {aiNotes.suggestions.map((s, i) => (
+                        <li key={i}>{s}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
             </div>
+          ) : (
+            <button
+              onClick={handleAnalyze}
+              disabled={analyzing}
+              className="rounded-lg border border-foreground/10 px-3 py-1.5 text-xs text-foreground/60 hover:text-foreground transition-colors disabled:opacity-30"
+            >
+              {analyzing ? "Analyzing..." : "Get Feedback"}
+            </button>
           )}
 
           {/* Adjustments */}
