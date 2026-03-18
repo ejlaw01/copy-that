@@ -40,8 +40,16 @@ export function Turnstile({ onToken }: TurnstileProps) {
     widgetIdRef.current = window.turnstile.render(containerRef.current, {
       sitekey: siteKey,
       callback: onToken,
-      "error-callback": () => {},
-      "expired-callback": () => {},
+      "error-callback": () => {
+        if (widgetIdRef.current && window.turnstile) {
+          window.turnstile.reset(widgetIdRef.current);
+        }
+      },
+      "expired-callback": () => {
+        if (widgetIdRef.current && window.turnstile) {
+          window.turnstile.reset(widgetIdRef.current);
+        }
+      },
       size: "invisible",
     });
   }, [onToken]);

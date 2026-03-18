@@ -18,6 +18,7 @@ export interface CopyBlock {
   id: string;
   brand_context_id: string;
   component_type: string;
+  user_prompt?: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   content: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -31,6 +32,7 @@ export interface SessionData {
   active_context_id: string | null;
   copy_blocks: CopyBlock[];
   generation_count: number;
+  active_block_id: string | null;
 }
 
 const STORAGE_KEY = "copythat_session";
@@ -41,6 +43,7 @@ function getDefault(): SessionData {
     active_context_id: null,
     copy_blocks: [],
     generation_count: 0,
+    active_block_id: null,
   };
 }
 
@@ -93,6 +96,19 @@ export function getActiveContext(): BrandContext | null {
   );
 }
 
+export function setActiveBlock(id: string | null): SessionData {
+  const session = getSession();
+  session.active_block_id = id;
+  saveSession(session);
+  return session;
+}
+
+export function getActiveBlock(): CopyBlock | null {
+  const session = getSession();
+  if (!session.active_block_id) return null;
+  return session.copy_blocks.find((b) => b.id === session.active_block_id) ?? null;
+}
+
 export function saveCopyBlock(block: CopyBlock): SessionData {
   const session = getSession();
   const idx = session.copy_blocks.findIndex((b) => b.id === block.id);
@@ -114,4 +130,15 @@ export function incrementGenerationCount(): number {
 
 export function getGenerationCount(): number {
   return getSession().generation_count;
+}
+
+export function deleteBrandContext(id: string): SessionData {
+  const session = getSession();
+  session.brand_contexts = session.brand_contexts.filter((c) => c.id !== id);
+  session.copy_blocks = session.copy_blocks.filter((b) => b.brand_context_id !== id);
+  if (session.active_context_id === id) {
+    session.active_context_id = session.brand_contexts[0]?.id ?? null;
+  }
+  saveSession(session);
+  return session;
 }
