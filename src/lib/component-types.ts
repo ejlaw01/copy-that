@@ -1,139 +1,44 @@
-export type StructureType = "single_line" | "paragraph" | "multi_item";
-
-export interface ComponentConstraint {
+export interface ContentCategory {
   label: string;
-  max_chars?: number;
-  min_chars?: number;
-  structure: StructureType;
-  guidance?: string;
+  guidance: string;
 }
 
-export interface MultiItemConstraint extends ComponentConstraint {
-  structure: "multi_item";
-  count: number;
-  per_item: Record<string, ComponentConstraint>;
-}
-
-export type ComponentType = ComponentConstraint | MultiItemConstraint;
-
-export function isMultiItem(c: ComponentType): c is MultiItemConstraint {
-  return c.structure === "multi_item";
-}
-
-export const COMPONENT_TYPES: Record<string, ComponentType> = {
-  hero_headline: {
-    label: "Hero Headline",
-    max_chars: 60,
-    structure: "single_line",
+export const CONTENT_CATEGORIES: Record<string, ContentCategory> = {
+  general: {
+    label: "General",
     guidance:
-      "Clear, benefit-driven, no jargon. Should immediately communicate what the business does and why it matters.",
+      "Flexible copy for any purpose. Follow the user's prompt closely.",
   },
-
-  hero_subheadline: {
-    label: "Hero Subheadline",
-    max_chars: 140,
-    structure: "single_line",
+  headline: {
+    label: "Headline",
     guidance:
-      "Supports the headline with a brief elaboration. Can include a specific proof point or differentiator.",
+      "Short, punchy, attention-grabbing. Typically under 80 characters. Clear benefit or hook.",
   },
-
-  value_props: {
-    label: "Value Propositions",
-    structure: "multi_item",
-    count: 3,
-    per_item: {
-      heading: {
-        label: "Heading",
-        max_chars: 40,
-        structure: "single_line",
-        guidance: "Action-oriented, specific benefit",
-      },
-      body: {
-        label: "Body",
-        max_chars: 120,
-        structure: "paragraph",
-        guidance: "One or two sentences expanding on the benefit",
-      },
-    },
-  } as MultiItemConstraint,
-
-  about_body: {
-    label: "About Body",
-    max_chars: 600,
-    min_chars: 200,
-    structure: "paragraph",
+  body_copy: {
+    label: "Body Copy",
     guidance:
-      "Origin story or mission statement. Should feel personal and authentic, not corporate.",
+      "Longer-form website copy: about sections, service descriptions, landing page blocks. Authentic and readable.",
   },
-
-  team_bio: {
-    label: "Team Bio",
-    max_chars: 300,
-    structure: "paragraph",
+  email: {
+    label: "Email",
     guidance:
-      "Brief professional bio. Should feel human — include a personal detail or two alongside credentials.",
+      "Email content: subject lines, body copy, CTAs. Conversational, scannable, action-oriented.",
   },
-
-  service_description: {
-    label: "Service Description",
-    max_chars: 200,
-    structure: "paragraph",
+  social: {
+    label: "Social Media",
     guidance:
-      "Clear explanation of one service offering. Focus on what the client gets, not how it works internally.",
+      "Social media posts and captions. Platform-aware, engaging, concise. Include hooks and calls to action where appropriate.",
   },
-
+  seo: {
+    label: "SEO",
+    guidance:
+      "Search-optimized content: meta titles, descriptions, alt text. Natural keyword integration, compelling click-through copy.",
+  },
   cta: {
     label: "Call to Action",
-    structure: "multi_item",
-    count: 1,
-    per_item: {
-      heading: {
-        label: "Heading",
-        max_chars: 50,
-        structure: "single_line",
-        guidance: "Creates urgency or invitation",
-      },
-      button_text: {
-        label: "Button Text",
-        max_chars: 25,
-        structure: "single_line",
-        guidance: "Action verb + benefit",
-      },
-      supporting_text: {
-        label: "Supporting Text",
-        max_chars: 100,
-        structure: "single_line",
-        guidance:
-          "Addresses a potential objection or reinforces the offer",
-      },
-    },
-  } as MultiItemConstraint,
-
-  meta_title: {
-    label: "Meta Title",
-    max_chars: 60,
-    min_chars: 30,
-    structure: "single_line",
     guidance:
-      "SEO page title. Include primary keyword naturally. Format: Primary Keyword — Brand Name",
-  },
-
-  meta_description: {
-    label: "Meta Description",
-    max_chars: 160,
-    min_chars: 140,
-    structure: "single_line",
-    guidance:
-      "SEO meta description. Summarize page content with a compelling reason to click. Include primary keyword.",
-  },
-
-  og_description: {
-    label: "Social Share Description",
-    max_chars: 200,
-    structure: "single_line",
-    guidance:
-      "Social sharing description. More conversational than meta description. Should make someone want to share or click.",
+      "Conversion-focused copy: button text, banner headlines, urgency messaging. Action verbs, clear value proposition.",
   },
 };
 
-export const COMPONENT_TYPE_KEYS = Object.keys(COMPONENT_TYPES);
+export const CATEGORY_KEYS = Object.keys(CONTENT_CATEGORIES);
