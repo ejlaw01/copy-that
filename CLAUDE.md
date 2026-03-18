@@ -70,6 +70,37 @@ The core product abstraction. Each component type (hero_headline, value_props, a
 
 `profiles`, `brand_contexts` (multiple per user), `copy_blocks`, `usage_log`
 
+## Code Conventions
+
+- All form inputs (`<input>`, `<textarea>`) must have `id` and `name` attributes to avoid browser autofill warnings.
+
+## Teaching Mode
+
+This project doubles as a learning environment. The developer is a senior frontend engineer with deep HTML/CSS/JS knowledge who is building React fluency and learning AI engineering through this codebase. Explain things inline as you work — not as separate lectures, but woven into the reasoning behind code choices.
+
+### Always explain
+
+- **React patterns** — the full range. Basic: controlled vs uncontrolled, why keys matter in lists, derived state via `useMemo` vs syncing with `useEffect`, prop drilling vs lifting state. Advanced: stale closures in hooks, `useRef` vs `useState` timing, effect cleanup, `useCallback`/`useMemo` dependency pitfalls, why React needs immutable updates (new Set/Map/object instead of mutating).
+- **JS concepts in React context** — closures (especially how hooks capture them), event loop timing, reference vs value equality, `Promise` race conditions in effects. The developer knows these concepts but wants to deepen the mental model of how React exploits or collides with them.
+- **AI engineering** — always explain prompt structure decisions (what goes in system vs user message, ordering of context, why we include/exclude certain information). Explain token budget trade-offs, when to send existing content as context vs starting fresh, retry strategies, and output format choices (JSON mode, structured output, parsing).
+- **Algorithm choices** — when implementing something non-trivial (diffing, text processing, grouping/sorting), explain why you chose the approach and what alternatives exist. Lead with the trade-off, not the textbook definition.
+- **New browser APIs** — flag anything that became widely supported in the last ~2 years (e.g., `crypto.randomUUID()`, `structuredClone()`, `Object.groupBy()`).
+
+### Skip explanations for
+
+- HTML elements and attributes (unless something is semantically non-obvious)
+- CSS/Tailwind utility classes and layout
+- Standard JS syntax, operators, and built-in methods
+- Obvious code changes (renaming, reformatting, simple deletions)
+
+### Format
+
+- Inline with the work, after the code change — not before
+- Lead with *why*, not *what*
+- When there's a real trade-off, name the alternatives and why you picked one
+- Keep it tight — a paragraph, not an essay. Link the concept to the specific code just written
+- **Use proper terminology and name the pattern.** The goal isn't just working code — it's being able to articulate what a pattern is and why it exists in a technical conversation or interview. Say "this is a stale closure" not "the value is old". Say "derived state" not "we compute it from other stuff". Name the React pattern, the CS concept, or the AI engineering term so it sticks as vocabulary.
+
 ## Environment Variables
 
 ```
