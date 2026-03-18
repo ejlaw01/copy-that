@@ -1,67 +1,288 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { ComponentEditor } from "@/components/ComponentEditor";
 import { Turnstile } from "@/components/Turnstile";
 import { ServiceUnavailable } from "@/components/ServiceUnavailable";
-import {
-  COMPONENT_TYPES,
-  COMPONENT_TYPE_KEYS,
-  isMultiItem,
-  type MultiItemConstraint,
-} from "@/lib/component-types";
-import { emptyDoc, type TipTapDoc } from "@/lib/tiptap-utils";
+import { CONTENT_CATEGORIES, CATEGORY_KEYS } from "@/lib/component-types";
+import type { TipTapDoc } from "@/lib/tiptap-utils";
 import {
   saveCopyBlock,
   incrementGenerationCount,
   getSession,
+  getActiveBlock,
+  setActiveBlock,
   type BrandContext,
   type CopyBlock,
 } from "@/lib/session-storage";
 
+function getDocumentKey(block: CopyBlock): string {
+  return `${block.component_type}::${(block.user_prompt || "").trim().toLowerCase()}`;
+}
+
+interface DocumentGroup {
+  key: string;
+  label: string;
+  promptPreview: string;
+  versions: CopyBlock[];
+  latest: CopyBlock;
+}
+
+function groupBlocksIntoDocuments(blocks: CopyBlock[]): DocumentGroup[] {
+  const map = new Map<string, CopyBlock[]>();
+  for (const block of blocks) {
+    const key = getDocumentKey(block);
+    const existing = map.get(key);
+    if (existing) {
+      existing.push(block);
+    } else {
+      map.set(key, [block]);
+    }
+  }
+
+  const groups: DocumentGroup[] = [];
+  for (const [key, versions] of map) {
+    const sorted = versions.sort(
+      (a, b) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    );
+    const latest = sorted[0];
+    const prompt = latest.user_prompt || "";
+    groups.push({
+      key,
+      label:
+        CONTENT_CATEGORIES[latest.component_type]?.label ??
+        latest.component_type,
+      promptPreview: prompt.length > 30 ? prompt.slice(0, 30) + "…" : prompt,
+      versions: sorted,
+      latest,
+    });
+  }
+
+  return groups;
+}
+
+function relativeTime(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+}
+
+interface DiffSpan {
+  type: "same" | "added" | "removed";
+  text: string;
+}
+
+function tokenize(text: string): string[] {
+  return text
+    .split(/(\n)|( +)|([.!?,;:]+)/)
+    .filter((t) => t !== undefined && t !== "");
+}
+
+function diffWords(oldText: string, newText: string): DiffSpan[] {
+  const oldWords = tokenize(oldText.trim());
+  const newWords = tokenize(newText.trim());
+  const oldLen = oldWords.length;
+  const newLen = newWords.length;
+
+  // LCS via DP table
+  const dp: number[][] = Array.from({ length: oldLen + 1 }, () =>
+    new Array(newLen + 1).fill(0),
+  );
+  for (let i = 1; i <= oldLen; i++) {
+    for (let j = 1; j <= newLen; j++) {
+      if (oldWords[i - 1] === newWords[j - 1]) {
+        dp[i][j] = dp[i - 1][j - 1] + 1;
+      } else {
+        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+      }
+    }
+  }
+
+  // Backtrack to build edit sequence
+  const edits: Array<{ type: "same" | "added" | "removed"; word: string }> = [];
+  let i = oldLen;
+  let j = newLen;
+  while (i > 0 || j > 0) {
+    if (i > 0 && j > 0 && oldWords[i - 1] === newWords[j - 1]) {
+      edits.unshift({ type: "same", word: oldWords[i - 1] });
+      i--;
+      j--;
+    } else if (j > 0 && (i === 0 || dp[i][j - 1] >= dp[i - 1][j])) {
+      edits.unshift({ type: "added", word: newWords[j - 1] });
+      j--;
+    } else {
+      edits.unshift({ type: "removed", word: oldWords[i - 1] });
+      i--;
+    }
+  }
+
+  // Merge consecutive spans of same type, rejoining with spaces
+  const isPunct = (s: string) => /^[.!?,;:]+$/.test(s);
+  const spans: DiffSpan[] = [];
+  for (const edit of edits) {
+    const isNewline = edit.word === "\n";
+    const last = spans[spans.length - 1];
+    if (last && last.type === edit.type) {
+      const sep = isNewline ? "\n" : isPunct(edit.word) ? "" : " ";
+      last.text += sep + edit.word;
+    } else {
+      const needsSpace =
+        !isNewline &&
+        !isPunct(edit.word) &&
+        spans.length > 0 &&
+        !spans[spans.length - 1].text.endsWith("\n");
+      spans.push({
+        type: edit.type,
+        text: (needsSpace ? " " : "") + edit.word,
+      });
+    }
+  }
+  return spans;
+}
+
 interface GenerationWorkspaceProps {
-  context: BrandContext;
+  context: BrandContext | null;
+  form: BrandContext;
+  canGenerate: boolean;
+  ensureContext: () => Promise<BrandContext | null>;
   onGenerate?: () => void;
 }
 
 interface AiNotes {
   generation_reasoning?: string;
-  constraint_notes?: { type: string; constraint: string }[];
   suggestions?: string[];
 }
 
-export function GenerationWorkspace({ context, onGenerate }: GenerationWorkspaceProps) {
-  const [selectedType, setSelectedType] = useState(COMPONENT_TYPE_KEYS[0]);
+export function GenerationWorkspace({
+  context,
+  form,
+  canGenerate,
+  ensureContext,
+  onGenerate,
+}: GenerationWorkspaceProps) {
   const [generating, setGenerating] = useState(false);
   const turnstileTokenRef = useRef<string | null>(null);
-  const [currentBlock, setCurrentBlock] = useState<CopyBlock | null>(null);
-  const [aiNotes, setAiNotes] = useState<AiNotes | null>(null);
-  const [showNotes, setShowNotes] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [softLimit, setSoftLimit] = useState(false);
   const [serviceDown, setServiceDown] = useState(false);
+
+  // Restore state from session storage
   const [history, setHistory] = useState<CopyBlock[]>(() => {
+    if (!context) return [];
     const session = getSession();
-    return session.copy_blocks.filter(
-      (b) => b.brand_context_id === context.id
-    );
+    return session.copy_blocks.filter((b) => b.brand_context_id === context.id);
+  });
+  const [currentBlock, setCurrentBlock] = useState<CopyBlock | null>(() => {
+    if (!context) return null;
+    return getActiveBlock();
+  });
+  const [category, setCategory] = useState(() => {
+    const block = context ? getActiveBlock() : null;
+    return block?.component_type ?? "general";
+  });
+  const [userPrompt, setUserPrompt] = useState(() => {
+    const block = context ? getActiveBlock() : null;
+    return block?.user_prompt ?? "";
+  });
+  const [aiNotes, setAiNotes] = useState<AiNotes | null>(() => {
+    const block = context ? getActiveBlock() : null;
+    return (block?.ai_notes as AiNotes | null) ?? null;
   });
 
-  const schema = COMPONENT_TYPES[selectedType];
+  const [feedback, setFeedback] = useState("");
+  const [showVersions, setShowVersions] = useState(false);
+  const [expandedVersions, setExpandedVersions] = useState<Set<string>>(
+    new Set(),
+  );
+
+  const documentGroups = useMemo(
+    () => groupBlocksIntoDocuments(history),
+    [history],
+  );
+
+  const activeDocKey = currentBlock ? getDocumentKey(currentBlock) : null;
+  const activeGroup = activeDocKey
+    ? (documentGroups.find((g) => g.key === activeDocKey) ?? null)
+    : null;
+  const activeVersionIndex =
+    activeGroup && currentBlock
+      ? activeGroup.versions.findIndex((v) => v.id === currentBlock.id)
+      : -1;
+
+  // Restore state when context becomes available after mount
+  const restoredContextRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!context || restoredContextRef.current === context.id) return;
+    restoredContextRef.current = context.id;
+    const session = getSession();
+    const blocks = session.copy_blocks.filter(
+      (b) => b.brand_context_id === context.id,
+    );
+    setHistory(blocks);
+    const block = getActiveBlock();
+    if (block && block.brand_context_id === context.id) {
+      setCurrentBlock(block);
+      setCategory(block.component_type);
+      setUserPrompt(block.user_prompt ?? "");
+      setAiNotes((block.ai_notes as AiNotes | null) ?? null);
+    } else {
+      setCurrentBlock(null);
+      setAiNotes(null);
+    }
+  }, [context]);
 
   async function handleGenerate() {
+    const isRefining = !!currentBlock && !!feedback.trim();
+    if (!isRefining && !userPrompt.trim()) return;
+    if (!canGenerate) return;
     setGenerating(true);
     setError(null);
 
+    // Auto-save current RTE content as a version before regenerating
+    let updatedHistory = history;
+    if (isRefining && currentBlock) {
+      const snapshot: CopyBlock = {
+        ...currentBlock,
+        id: crypto.randomUUID(),
+        version: (currentBlock.version ?? 1) + 1,
+        created_at: new Date().toISOString(),
+      };
+      saveCopyBlock(snapshot);
+      updatedHistory = [snapshot, ...history];
+      setHistory(updatedHistory);
+    }
+
     try {
+      // Ensure voice profile exists (lazy creation)
+      const ctx = await ensureContext();
+      if (!ctx) {
+        setError("Please fill in all required brand fields first.");
+        setGenerating(false);
+        return;
+      }
+
+      // Build the prompt: original request + feedback context if refining
+      let effectivePrompt = userPrompt;
+      if (isRefining) {
+        const currentText = docToPlainText(currentBlock!.content as TipTapDoc);
+        effectivePrompt = `${userPrompt}\n\nCURRENT COPY (revise this based on the feedback below):\n${currentText}\n\nFEEDBACK:\n${feedback.trim()}`;
+      }
+
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          component_type: selectedType,
-          voice_profile: context.voice_profile,
-          business_name: context.business_name,
-          source_content: context.source_content,
+          category,
+          user_prompt: effectivePrompt,
+          voice_profile: ctx.voice_profile,
+          business_name: ctx.business_name,
+          source_content: ctx.source_content,
           turnstile_token: turnstileTokenRef.current,
         }),
       });
@@ -69,7 +290,7 @@ export function GenerationWorkspace({ context, onGenerate }: GenerationWorkspace
       if (!res.ok) {
         const data = await res.json();
         if (data.limit_reached && !data.soft_limit) {
-          onGenerate?.(); // Trigger save prompt for anonymous users
+          onGenerate?.();
         }
         if (data.soft_limit) {
           setSoftLimit(true);
@@ -79,7 +300,9 @@ export function GenerationWorkspace({ context, onGenerate }: GenerationWorkspace
           throw new Error(data.error);
         }
         if (data.service_unavailable === "temporary") {
-          throw new Error("The AI service is busy. Please try again in a moment.");
+          throw new Error(
+            "The AI service is busy. Please try again in a moment.",
+          );
         }
         throw new Error(data.error || "Generation failed");
       }
@@ -89,8 +312,9 @@ export function GenerationWorkspace({ context, onGenerate }: GenerationWorkspace
 
       const block: CopyBlock = {
         id: crypto.randomUUID(),
-        brand_context_id: context.id,
-        component_type: selectedType,
+        brand_context_id: ctx.id,
+        component_type: category,
+        user_prompt: userPrompt,
         content: data.content,
         ai_notes: data.ai_notes,
         version: 1,
@@ -98,12 +322,18 @@ export function GenerationWorkspace({ context, onGenerate }: GenerationWorkspace
       };
 
       saveCopyBlock(block);
+      setActiveBlock(block.id);
       setCurrentBlock(block);
       setAiNotes(data.ai_notes);
+      setFeedback("");
       setHistory((prev) => [block, ...prev]);
       onGenerate?.();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Generation failed");
+      if (err instanceof Error && err.message === "service_unavailable") {
+        setServiceDown(true);
+      } else {
+        setError(err instanceof Error ? err.message : "Generation failed");
+      }
     } finally {
       setGenerating(false);
     }
@@ -116,54 +346,32 @@ export function GenerationWorkspace({ context, onGenerate }: GenerationWorkspace
       setCurrentBlock(updated);
       saveCopyBlock(updated);
     },
-    [currentBlock]
+    [currentBlock],
   );
 
-  function handleMultiItemChange(index: number, field: string, json: TipTapDoc) {
-    if (!currentBlock) return;
-    const content = currentBlock.content as { items: Record<string, unknown>[] };
-    const items = [...content.items];
-    items[index] = { ...items[index], [field]: json };
-    const updated = { ...currentBlock, content: { items } };
-    setCurrentBlock(updated);
-    saveCopyBlock(updated);
-  }
-
   function loadBlock(block: CopyBlock) {
+    setActiveBlock(block.id);
     setCurrentBlock(block);
-    setSelectedType(block.component_type);
+    setCategory(block.component_type);
+    setUserPrompt(block.user_prompt ?? "");
     setAiNotes(block.ai_notes as AiNotes | null);
+    setFeedback("");
   }
 
-  async function handleCopy(format: "text" | "html") {
+  async function handleCopy() {
     if (!currentBlock) return;
-
-    if (format === "html") {
-      // For multi-item, build a simple HTML representation
-      if (isMultiItem(COMPONENT_TYPES[currentBlock.component_type])) {
-        const content = currentBlock.content as { items: Record<string, TipTapDoc>[] };
-        const html = content.items
-          .map((item) =>
-            Object.entries(item)
-              .map(([, doc]) => docToPlainText(doc))
-              .join("\n")
-          )
-          .join("\n\n");
-        await navigator.clipboard.writeText(html);
-      } else {
-        const doc = currentBlock.content as TipTapDoc;
-        await navigator.clipboard.writeText(docToPlainText(doc));
-      }
-    } else {
-      const text = extractPlainText(currentBlock);
-      await navigator.clipboard.writeText(text);
-    }
+    const doc = currentBlock.content as TipTapDoc;
+    const text = docToPlainText(doc);
+    await navigator.clipboard.writeText(text);
   }
 
   function handleDownloadMarkdown() {
     if (!currentBlock) return;
-    const text = extractPlainText(currentBlock);
-    const blob = new Blob([`# ${schema.label}\n\n${text}\n`], {
+    const text = docToPlainText(currentBlock.content as TipTapDoc);
+    const categoryLabel =
+      CONTENT_CATEGORIES[currentBlock.component_type]?.label ??
+      currentBlock.component_type;
+    const blob = new Blob([`# ${categoryLabel}\n\n${text}\n`], {
       type: "text/markdown",
     });
     const url = URL.createObjectURL(blob);
@@ -174,187 +382,414 @@ export function GenerationWorkspace({ context, onGenerate }: GenerationWorkspace
     URL.revokeObjectURL(url);
   }
 
+  function handleSaveVersion() {
+    if (!currentBlock) return;
+    const newBlock: CopyBlock = {
+      ...currentBlock,
+      id: crypto.randomUUID(),
+      ai_notes: null,
+      version: (currentBlock.version ?? 1) + 1,
+      created_at: new Date().toISOString(),
+    };
+    saveCopyBlock(newBlock);
+    setActiveBlock(newBlock.id);
+    setCurrentBlock(newBlock);
+    setAiNotes(null);
+    setHistory((prev) => [newBlock, ...prev]);
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      handleGenerate();
+    }
+  }
+
+  function handleFeedbackKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      handleGenerate();
+    }
+  }
+
   return (
-    <div className="mx-auto max-w-4xl flex gap-8">
-      <Turnstile onToken={(token) => { turnstileTokenRef.current = token; }} />
-      {/* Main area */}
-      <div className="flex-1 min-w-0">
-        {/* Component type selector */}
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-foreground/70 mb-2">
-            Component Type
-          </label>
-          <select
-            value={selectedType}
-            onChange={(e) => {
-              setSelectedType(e.target.value);
+    <div>
+      <Turnstile
+        onToken={(token) => {
+          turnstileTokenRef.current = token;
+        }}
+      />
+
+      {/* Copy Blocks — Document Picker Strip */}
+      {documentGroups.length > 0 && (
+        <div className="mb-6 flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none border-t border-foreground/10 pt-5">
+          {documentGroups.map((group) => (
+            <button
+              key={group.key}
+              onClick={() => {
+                loadBlock(group.latest);
+                setShowVersions(false);
+              }}
+              className={`shrink-0 rounded-full px-4 py-1.5 text-xs transition-colors ${
+                activeDocKey === group.key
+                  ? "bg-foreground text-background"
+                  : "bg-foreground/5 text-foreground/60 hover:bg-foreground/10 hover:text-foreground"
+              }`}
+            >
+              <span className="font-medium">{group.label}</span>
+              {group.promptPreview && (
+                <span
+                  className={
+                    activeDocKey === group.key
+                      ? "text-background/60"
+                      : "text-foreground/30"
+                  }
+                >
+                  {" "}
+                  — {group.promptPreview}
+                </span>
+              )}
+            </button>
+          ))}
+          <button
+            onClick={() => {
               setCurrentBlock(null);
+              setActiveBlock(null);
+              setCategory("general");
+              setUserPrompt("");
+              setFeedback("");
               setAiNotes(null);
-              setError(null);
+              setShowVersions(false);
             }}
-            className="w-full rounded-lg border border-foreground/10 bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-foreground/20"
+            className="shrink-0 rounded-full border border-dashed border-foreground/20 px-4 py-1.5 text-xs text-foreground/40 hover:text-foreground/60 hover:border-foreground/30 transition-colors"
           >
-            {COMPONENT_TYPE_KEYS.map((key) => (
-              <option key={key} value={key}>
-                {COMPONENT_TYPES[key].label}
-              </option>
-            ))}
-          </select>
-          {schema.guidance && (
-            <p className="mt-1.5 text-xs text-foreground/40">{schema.guidance}</p>
+            + New
+          </button>
+        </div>
+      )}
+
+      {/* Category + Prompt */}
+      <div className="mb-6 space-y-5 border-t border-foreground/10 pt-5">
+        {!currentBlock && (
+          <div>
+            <label className="block text-sm font-medium text-foreground/70 mb-2">
+              Category
+            </label>
+            <select
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              className="w-full rounded-lg border border-foreground/10 bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-foreground/20"
+            >
+              {CATEGORY_KEYS.map((key) => (
+                <option key={key} value={key}>
+                  {CONTENT_CATEGORIES[key].label}
+                </option>
+              ))}
+            </select>
+            <p className="mt-1.5 text-xs text-foreground/40">
+              {CONTENT_CATEGORIES[category].guidance}
+            </p>
+          </div>
+        )}
+
+        <div>
+          <label className="block text-sm font-medium text-foreground/70 mb-2">
+            Prompt
+          </label>
+          {currentBlock ? (
+            <p className="text-sm text-foreground/60">{userPrompt}</p>
+          ) : (
+            <textarea
+              id="user-prompt"
+              name="user-prompt"
+              value={userPrompt}
+              onChange={(e) => setUserPrompt(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder='What do you need? e.g., "Write a hero headline that emphasizes our fast turnaround"'
+              rows={3}
+              maxLength={1000}
+              className="w-full rounded-lg border border-foreground/10 bg-background px-3 py-2 text-sm text-foreground placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-foreground/20 resize-none"
+            />
           )}
         </div>
 
-        {/* Editor area */}
-        {currentBlock ? (
-          <div className="space-y-4">
-            {isMultiItem(schema) ? (
-              <MultiItemEditor
-                block={currentBlock}
-                schema={schema as MultiItemConstraint}
-                onChange={handleMultiItemChange}
-              />
-            ) : (
-              <ComponentEditor
-                content={currentBlock.content as TipTapDoc}
-                maxChars={schema.max_chars}
-                minChars={schema.min_chars}
-                singleLine={schema.structure === "single_line"}
-                onChange={handleContentChange}
-              />
-            )}
-
-            {/* Actions */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleGenerate}
-                disabled={generating}
-                className="rounded-lg border border-foreground/10 px-3 py-1.5 text-xs text-foreground/60 hover:text-foreground transition-colors disabled:opacity-30"
-              >
-                {generating ? "Regenerating..." : "Regenerate"}
-              </button>
-              <button
-                onClick={() => handleCopy("text")}
-                className="rounded-lg border border-foreground/10 px-3 py-1.5 text-xs text-foreground/60 hover:text-foreground transition-colors"
-              >
-                Copy Text
-              </button>
-              <button
-                onClick={() => handleCopy("html")}
-                className="rounded-lg border border-foreground/10 px-3 py-1.5 text-xs text-foreground/60 hover:text-foreground transition-colors"
-              >
-                Copy HTML
-              </button>
-              <button
-                onClick={handleDownloadMarkdown}
-                className="rounded-lg border border-foreground/10 px-3 py-1.5 text-xs text-foreground/60 hover:text-foreground transition-colors"
-              >
-                Download .md
-              </button>
-            </div>
-
-            {/* AI Notes */}
-            {aiNotes?.generation_reasoning && (
-              <div>
-                <button
-                  onClick={() => setShowNotes(!showNotes)}
-                  className="text-xs text-foreground/40 hover:text-foreground transition-colors"
-                >
-                  {showNotes ? "Hide" : "Why this copy?"}
-                </button>
-                {showNotes && (
-                  <div className="mt-2 rounded-lg bg-foreground/5 p-3 text-xs text-foreground/60 space-y-2">
-                    <p>{aiNotes.generation_reasoning}</p>
-                    {aiNotes.suggestions && aiNotes.suggestions.length > 0 && (
-                      <div>
-                        <p className="font-medium text-foreground/50 mb-1">Suggestions:</p>
-                        <ul className="list-disc list-inside space-y-0.5">
-                          {aiNotes.suggestions.map((s, i) => (
-                            <li key={i}>{s}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        ) : (
-          /* Empty state */
-          <div className="rounded-lg border border-dashed border-foreground/10 p-12 text-center">
-            <p className="text-sm text-foreground/30 mb-4">
-              Generate a {schema.label.toLowerCase()} for {context.business_name}
-            </p>
+        {!currentBlock && (
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-foreground/30">
+              {typeof navigator !== "undefined" &&
+              navigator.platform?.includes("Mac")
+                ? "⌘"
+                : "Ctrl"}
+              +Enter to generate
+            </span>
             <button
               onClick={handleGenerate}
-              disabled={generating}
-              className="rounded-lg bg-foreground px-5 py-2 text-sm font-medium text-background transition-opacity disabled:opacity-50"
+              disabled={generating || !userPrompt.trim() || !canGenerate}
+              className="rounded-lg bg-foreground px-5 py-2 text-sm font-medium text-background transition-opacity disabled:opacity-30"
             >
               {generating ? "Generating..." : "Generate"}
             </button>
           </div>
         )}
-
-        {error && !softLimit && (
-          <p className="mt-3 text-sm text-red-500">{error}</p>
-        )}
-
-        {softLimit && (
-          <div className="mt-4 rounded-lg border border-foreground/10 bg-foreground/5 p-4 text-sm text-foreground/70 space-y-2">
-            <p>
-              You&apos;ve hit today&apos;s generation limit. This tool is a free project by{" "}
-              <strong>Bit Lore</strong>, a custom web development studio in Portland.
-            </p>
-            <p>
-              If you&apos;re finding this useful, or if you need help building the site
-              this content is going to live on, I&apos;d love to hear from you.
-            </p>
-            <div className="flex items-center gap-3 pt-1">
-              <a
-                href="mailto:hello@bitlore.io"
-                className="rounded-lg bg-foreground px-4 py-1.5 text-xs font-medium text-background hover:opacity-90 transition-opacity"
-              >
-                Get in touch
-              </a>
-              <a
-                href="https://bitlore.io"
-                className="text-xs text-foreground/50 hover:text-foreground transition-colors"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                bitlore.io
-              </a>
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* History sidebar */}
-      {history.length > 0 && (
-        <div className="w-56 shrink-0">
-          <h3 className="text-xs font-medium text-foreground/40 mb-3 uppercase tracking-wider">
-            History
-          </h3>
-          <div className="space-y-1.5">
-            {history.map((block) => (
+      {/* Output — Editor (full width) */}
+      {currentBlock && (
+        <div className="space-y-4">
+          <ComponentEditor
+            content={currentBlock.content as TipTapDoc}
+            onChange={handleContentChange}
+          />
+
+          {/* Actions */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleCopy}
+              className="rounded-lg border border-foreground/10 px-3 py-1.5 text-xs text-foreground/60 hover:text-foreground transition-colors"
+            >
+              Copy Text
+            </button>
+            <button
+              onClick={handleDownloadMarkdown}
+              className="rounded-lg border border-foreground/10 px-3 py-1.5 text-xs text-foreground/60 hover:text-foreground transition-colors"
+            >
+              Download .md
+            </button>
+            <button
+              onClick={handleSaveVersion}
+              className="ml-auto rounded-lg border border-foreground/10 px-3 py-1.5 text-xs text-foreground/60 hover:text-foreground transition-colors"
+            >
+              Save Version
+            </button>
+          </div>
+
+          {/* Version History */}
+          {activeGroup && (
+            <div>
               <button
-                key={block.id}
-                onClick={() => loadBlock(block)}
-                className={`w-full text-left rounded-lg px-3 py-2 text-xs transition-colors ${
-                  currentBlock?.id === block.id
-                    ? "bg-foreground/10 text-foreground"
-                    : "text-foreground/50 hover:bg-foreground/5 hover:text-foreground"
-                }`}
+                onClick={() => setShowVersions(!showVersions)}
+                className="text-xs text-foreground/40 hover:text-foreground transition-colors"
               >
-                <span className="block font-medium truncate">
-                  {COMPONENT_TYPES[block.component_type]?.label ?? block.component_type}
-                </span>
-                <span className="block text-foreground/30 truncate">
-                  {previewContent(block)}
-                </span>
+                Version {activeGroup.versions.length - activeVersionIndex} of{" "}
+                {activeGroup.versions.length} {showVersions ? "▼" : "▶"}
               </button>
-            ))}
+              {showVersions && (
+                <div className="mt-2 space-y-1">
+                  {activeGroup.versions.map((version, i) => {
+                    const versionNum = activeGroup.versions.length - i;
+                    const prevVersion = activeGroup.versions[i + 1];
+                    const currentText = docToPlainText(
+                      version.content as TipTapDoc,
+                    );
+                    const hasDiff = !!prevVersion;
+                    const spans = hasDiff
+                      ? diffWords(
+                          docToPlainText(prevVersion.content as TipTapDoc),
+                          currentText,
+                        )
+                      : [{ type: "same" as const, text: currentText }];
+
+                    // Split spans into lines for preview truncation
+                    const allLines: Array<{ spans: DiffSpan[] }> = [
+                      { spans: [] },
+                    ];
+                    for (const span of spans) {
+                      const parts = span.text.split("\n");
+                      for (let p = 0; p < parts.length; p++) {
+                        if (p > 0) allLines.push({ spans: [] });
+                        if (parts[p]) {
+                          allLines[allLines.length - 1].spans.push({
+                            type: span.type,
+                            text: parts[p],
+                          });
+                        }
+                      }
+                    }
+                    const nonEmptyLines = allLines.filter((l) =>
+                      l.spans.some((s) => s.text.trim().length > 0),
+                    );
+
+                    const isExpanded = expandedVersions.has(version.id);
+                    const hasMore = nonEmptyLines.length > 3;
+                    const visibleLines = isExpanded
+                      ? nonEmptyLines
+                      : nonEmptyLines.slice(0, 3);
+
+                    return (
+                      <div
+                        key={version.id}
+                        onClick={() => loadBlock(version)}
+                        className={`rounded-lg px-3 py-2 text-xs transition-colors cursor-pointer no-underline ${
+                          currentBlock?.id === version.id
+                            ? "bg-foreground/10 text-foreground"
+                            : "text-foreground/50 hover:bg-foreground/5"
+                        }`}
+                      >
+                        <div>
+                          <span className="font-medium">
+                            Version {versionNum}
+                          </span>
+                          <span className="text-foreground/30 ml-2">
+                            {relativeTime(version.created_at)}
+                          </span>
+                        </div>
+                        <div className="mt-0.5">
+                          {visibleLines.length === 0 && (
+                            <span className="text-foreground/30">(empty)</span>
+                          )}
+                          {visibleLines.map((line, li) => (
+                            <div key={li} className="text-foreground/30">
+                              {line.spans.map((s, si) =>
+                                s.type === "added" ? (
+                                  <span
+                                    key={si}
+                                    className="bg-green-500/15 text-green-700 dark:text-green-400"
+                                  >
+                                    {s.text}
+                                  </span>
+                                ) : s.type === "removed" ? (
+                                  <span
+                                    key={si}
+                                    className="bg-red-500/15 text-red-700 dark:text-red-400 line-through"
+                                  >
+                                    {s.text}
+                                  </span>
+                                ) : (
+                                  <span key={si}>{s.text}</span>
+                                ),
+                              )}
+                            </div>
+                          ))}
+                          {hasMore && !isExpanded && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setExpandedVersions((prev) => {
+                                  const next = new Set(prev);
+                                  next.add(version.id);
+                                  return next;
+                                });
+                              }}
+                              className="text-foreground/40 hover:text-foreground/60 transition-colors"
+                            >
+                              ...
+                            </button>
+                          )}
+                          {hasMore && isExpanded && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setExpandedVersions((prev) => {
+                                  const next = new Set(prev);
+                                  next.delete(version.id);
+                                  return next;
+                                });
+                              }}
+                              className="block text-foreground/40 hover:text-foreground/60 transition-colors mt-0.5"
+                            >
+                              show less
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* AI area — notes + adjustments */}
+      {currentBlock && (
+        <div className="mt-6 rounded-lg bg-foreground/5 p-4 space-y-4">
+          {/* AI Notes — always visible */}
+          {aiNotes?.generation_reasoning && (
+            <div className="text-xs text-foreground/60 space-y-2">
+              <p>{aiNotes.generation_reasoning}</p>
+              {aiNotes.suggestions && aiNotes.suggestions.length > 0 && (
+                <div>
+                  <p className="font-medium text-foreground/50 mb-1">
+                    Suggestions:
+                  </p>
+                  <ul className="list-disc list-inside space-y-0.5">
+                    {aiNotes.suggestions.map((s, i) => (
+                      <li key={i}>{s}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Adjustments */}
+          <div>
+            <label className="block text-sm font-medium text-foreground/70 mb-2">
+              Adjustments
+            </label>
+            <textarea
+              id="feedback-prompt"
+              name="feedback-prompt"
+              value={feedback}
+              onChange={(e) => setFeedback(e.target.value)}
+              onKeyDown={handleFeedbackKeyDown}
+              placeholder='e.g., "Make it shorter", "More casual tone", "Emphasize the guarantee"'
+              rows={2}
+              maxLength={1000}
+              className="w-full rounded-lg border border-foreground/10 bg-background px-3 py-2 text-sm text-foreground placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-foreground/20 resize-none"
+            />
+            <div className="flex items-center justify-between mt-1.5">
+              <span className="text-xs text-foreground/30">
+                {typeof navigator !== "undefined" &&
+                navigator.platform?.includes("Mac")
+                  ? "⌘"
+                  : "Ctrl"}
+                +Enter to regenerate
+              </span>
+              <button
+                onClick={handleGenerate}
+                disabled={generating || !feedback.trim() || !canGenerate}
+                className="rounded-lg bg-foreground px-5 py-2 text-sm font-medium text-background transition-opacity disabled:opacity-30"
+              >
+                {generating ? "Working..." : "Apply"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {error && !softLimit && (
+        <p className="mt-3 text-sm text-red-500">{error}</p>
+      )}
+
+      {softLimit && (
+        <div className="mt-4 rounded-lg border border-foreground/10 bg-foreground/5 p-4 text-sm text-foreground/70 space-y-2">
+          <p>
+            You&apos;ve hit today&apos;s generation limit. This tool is a free
+            project by <strong>Bit Lore</strong>, a custom web development
+            studio in Portland.
+          </p>
+          <p>
+            If you&apos;re finding this useful, or if you need help building the
+            site this content is going to live on, I&apos;d love to hear from
+            you.
+          </p>
+          <div className="flex items-center gap-3 pt-1">
+            <a
+              href="mailto:hello@bitlore.io"
+              className="rounded-lg bg-foreground px-4 py-1.5 text-xs font-medium text-background hover:opacity-90 transition-opacity"
+            >
+              Get in touch
+            </a>
+            <a
+              href="https://bitlore.io"
+              className="text-xs text-foreground/50 hover:text-foreground transition-colors"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              bitlore.io
+            </a>
           </div>
         </div>
       )}
@@ -366,69 +801,19 @@ export function GenerationWorkspace({ context, onGenerate }: GenerationWorkspace
   );
 }
 
-function MultiItemEditor({
-  block,
-  schema,
-  onChange,
-}: {
-  block: CopyBlock;
-  schema: MultiItemConstraint;
-  onChange: (index: number, field: string, json: TipTapDoc) => void;
-}) {
-  const content = block.content as { items: Record<string, TipTapDoc>[] };
-
-  return (
-    <div className="space-y-4">
-      {content.items.map((item, i) => (
-        <div key={i} className="space-y-2">
-          {i > 0 && <hr className="border-foreground/5" />}
-          <p className="text-xs font-medium text-foreground/40">Item {i + 1}</p>
-          {Object.entries(schema.per_item).map(([field, constraint]) => (
-            <div key={field}>
-              <label className="block text-xs text-foreground/50 mb-1">
-                {constraint.label}
-              </label>
-              <ComponentEditor
-                content={item[field] ?? emptyDoc()}
-                maxChars={constraint.max_chars}
-                minChars={constraint.min_chars}
-                singleLine={constraint.structure === "single_line"}
-                onChange={(json) => onChange(i, field, json)}
-              />
-            </div>
-          ))}
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function docToPlainText(doc: TipTapDoc): string {
   return doc.content
     .map((node) =>
       (node.content || [])
         .filter((c) => c.type === "text")
         .map((c) => c.text || "")
-        .join("")
+        .join(""),
     )
     .join("\n");
 }
 
-function extractPlainText(block: CopyBlock): string {
-  if (isMultiItem(COMPONENT_TYPES[block.component_type])) {
-    const content = block.content as { items: Record<string, TipTapDoc>[] };
-    return content.items
-      .map((item) =>
-        Object.entries(item)
-          .map(([key, doc]) => `${key}: ${docToPlainText(doc)}`)
-          .join("\n")
-      )
-      .join("\n\n");
-  }
-  return docToPlainText(block.content as TipTapDoc);
-}
-
-function previewContent(block: CopyBlock): string {
-  const text = extractPlainText(block);
-  return text.slice(0, 60) || "(empty)";
+function getContentLines(block: CopyBlock): string[] {
+  const doc = block.content as TipTapDoc;
+  const text = docToPlainText(doc);
+  return text.split("\n").filter((l) => l.trim().length > 0);
 }
