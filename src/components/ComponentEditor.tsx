@@ -149,7 +149,7 @@ export const ComponentEditor = forwardRef<ComponentEditorHandle, ComponentEditor
         : undefined,
       attributes: {
         class:
-          "prose dark:prose-invert max-w-none focus:outline-none min-h-[2.5rem] px-3 py-2",
+          "prose dark:prose-invert max-w-none focus:outline-none min-h-[2.5rem] px-3 py-4",
       },
     },
     onUpdate: ({ editor }) => {
