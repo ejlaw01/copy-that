@@ -104,8 +104,8 @@ export function BrandContextForm({ initial, onComplete }: BrandContextFormProps)
         <ServiceUnavailable onDismiss={() => setServiceDown(false)} />
       )}
 
-      <h2 className="text-xl font-semibold mb-1">Set up your voice</h2>
-      <p className="text-sm text-foreground/50 mb-6">
+      <h2 className="font-display text-xl font-semibold mb-1">Set up your voice</h2>
+      <p className="font-ui text-sm text-ct-muted mb-6">
         Tell us about your brand so we can match your tone
       </p>
 
@@ -146,8 +146,8 @@ export function BrandContextForm({ initial, onComplete }: BrandContextFormProps)
         />
 
         {/* Optional fields */}
-        <div className="border-t border-foreground/5 pt-4 mt-2">
-          <p className="text-xs text-foreground/40 mb-4">Optional — helps us dial in the voice</p>
+        <div className="border-t border-ct-rule pt-4 mt-2">
+          <p className="text-xs text-ct-muted mb-4">Optional — helps us dial in the voice</p>
           <div className="space-y-4">
             <Field
               label="Copy you like"
@@ -179,7 +179,7 @@ export function BrandContextForm({ initial, onComplete }: BrandContextFormProps)
         <button
           onClick={handleFinish}
           disabled={!canSubmit() || loading}
-          className="rounded-lg bg-foreground px-5 py-2 text-sm font-medium text-background transition-opacity disabled:opacity-30"
+          className="ct-btn ct-btn-primary disabled:opacity-30"
         >
           {loading ? "Setting up..." : "Create Voice Profile"}
         </button>
@@ -203,12 +203,9 @@ function Field({
   multiline?: boolean;
   maxLength?: number;
 }) {
-  const cls =
-    "w-full rounded-lg border border-foreground/10 bg-background px-3 py-2 text-sm text-foreground placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-foreground/20";
-
   return (
     <label className="block">
-      <span className="mb-1 block text-sm font-medium text-foreground/70">{label}</span>
+      <span className="ct-label">{label}</span>
       {multiline ? (
         <textarea
           placeholder={placeholder}
@@ -216,7 +213,7 @@ function Field({
           onChange={(e) => onChange(e.target.value)}
           maxLength={maxLength}
           rows={3}
-          className={cls + " resize-none"}
+          className="ct-textarea resize-none"
         />
       ) : (
         <input
@@ -225,7 +222,7 @@ function Field({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           maxLength={maxLength}
-          className={cls}
+          className="ct-input"
         />
       )}
     </label>

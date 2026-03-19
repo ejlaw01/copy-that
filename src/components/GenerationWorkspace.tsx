@@ -463,7 +463,7 @@ export function GenerationWorkspace({
 
       {/* Copy Blocks — Document Picker Strip */}
       {documentGroups.length > 0 && (
-        <div className="mb-6 flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none border-t border-foreground/10 pt-5">
+        <div className="mb-6 flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none border-t border-ct-rule pt-5">
           {documentGroups.map((group) => (
             <button
               key={group.key}
@@ -473,8 +473,8 @@ export function GenerationWorkspace({
               }}
               className={`shrink-0 rounded-full px-4 py-1.5 text-xs transition-colors ${
                 activeDocKey === group.key
-                  ? "bg-foreground text-background"
-                  : "bg-foreground/5 text-foreground/60 hover:bg-foreground/10 hover:text-foreground"
+                  ? "bg-ct-ink text-ct-paper"
+                  : "bg-ct-cream text-ct-muted hover:bg-ct-rule hover:text-ct-ink"
               }`}
             >
               <span className="font-medium">{group.label}</span>
@@ -482,8 +482,8 @@ export function GenerationWorkspace({
                 <span
                   className={
                     activeDocKey === group.key
-                      ? "text-background/60"
-                      : "text-foreground/30"
+                      ? "text-ct-paper/60"
+                      : "text-ct-rule"
                   }
                 >
                   {" "}
@@ -502,7 +502,7 @@ export function GenerationWorkspace({
               setAiNotes(null);
               setShowVersions(false);
             }}
-            className="shrink-0 rounded-full border border-dashed border-foreground/20 px-4 py-1.5 text-xs text-foreground/40 hover:text-foreground/60 hover:border-foreground/30 transition-colors"
+            className="shrink-0 rounded-full border border-dashed border-ct-rule px-4 py-1.5 text-xs font-ui text-ct-muted hover:text-ct-ink hover:border-ct-muted transition-colors"
           >
             + New
           </button>
@@ -510,16 +510,16 @@ export function GenerationWorkspace({
       )}
 
       {/* Category + Prompt */}
-      <div className="mb-6 space-y-5 border-t border-foreground/10 pt-5">
+      <div className="mb-6 space-y-5 border-t border-ct-rule pt-5">
         {!currentBlock && (
           <div>
-            <label className="block text-sm font-medium text-foreground/70 mb-2">
+            <label className="ct-label">
               Category
             </label>
             <select
               value={category}
               onChange={(e) => setCategory(e.target.value)}
-              className="w-full rounded-lg border border-foreground/10 bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-foreground/20"
+              className="ct-input"
             >
               {CATEGORY_KEYS.map((key) => (
                 <option key={key} value={key}>
@@ -527,18 +527,18 @@ export function GenerationWorkspace({
                 </option>
               ))}
             </select>
-            <p className="mt-1.5 text-xs text-foreground/40">
+            <p className="mt-1.5 text-xs text-ct-muted">
               {CONTENT_CATEGORIES[category].guidance}
             </p>
           </div>
         )}
 
         <div>
-          <label className="block text-sm font-medium text-foreground/70 mb-2">
+          <label className="ct-label">
             Prompt
           </label>
           {currentBlock ? (
-            <p className="text-sm text-foreground/60">{userPrompt}</p>
+            <p className="text-sm text-ct-muted">{userPrompt}</p>
           ) : (
             <textarea
               id="user-prompt"
@@ -549,14 +549,14 @@ export function GenerationWorkspace({
               placeholder='What do you need? e.g., "Write a hero headline that emphasizes our fast turnaround"'
               rows={3}
               maxLength={1000}
-              className="w-full rounded-lg border border-foreground/10 bg-background px-3 py-2 text-sm text-foreground placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-foreground/20 resize-none"
+              className="ct-input resize-none"
             />
           )}
         </div>
 
         {!currentBlock && (
           <div className="flex items-center justify-between">
-            <span className="text-xs text-foreground/30">
+            <span className="text-xs text-ct-rule">
               {typeof navigator !== "undefined" &&
               navigator.platform?.includes("Mac")
                 ? "⌘"
@@ -566,7 +566,7 @@ export function GenerationWorkspace({
             <button
               onClick={handleGenerate}
               disabled={generating || !userPrompt.trim() || !canGenerate}
-              className="rounded-lg bg-foreground px-5 py-2 text-sm font-medium text-background transition-opacity disabled:opacity-30"
+              className="ct-btn ct-btn-primary disabled:opacity-30"
             >
               {generating ? "Generating..." : "Generate"}
             </button>
@@ -587,19 +587,19 @@ export function GenerationWorkspace({
           <div className="flex items-center gap-2">
             <button
               onClick={handleCopy}
-              className="rounded-lg border border-foreground/10 px-3 py-1.5 text-xs text-foreground/60 hover:text-foreground transition-colors"
+              className="ct-btn ct-btn-secondary text-xs"
             >
               Copy Text
             </button>
             <button
               onClick={handleDownloadMarkdown}
-              className="rounded-lg border border-foreground/10 px-3 py-1.5 text-xs text-foreground/60 hover:text-foreground transition-colors"
+              className="ct-btn ct-btn-secondary text-xs"
             >
               Download .md
             </button>
             <button
               onClick={handleSaveVersion}
-              className="ml-auto rounded-lg border border-foreground/10 px-3 py-1.5 text-xs text-foreground/60 hover:text-foreground transition-colors"
+              className="ml-auto ct-btn ct-btn-secondary text-xs"
             >
               Save Version
             </button>
@@ -610,7 +610,7 @@ export function GenerationWorkspace({
             <div>
               <button
                 onClick={() => setShowVersions(!showVersions)}
-                className="text-xs text-foreground/40 hover:text-foreground transition-colors"
+                className="text-xs text-ct-muted hover:text-ct-ink transition-colors"
               >
                 Version {activeGroup.versions.length - activeVersionIndex} of{" "}
                 {activeGroup.versions.length} {showVersions ? "▼" : "▶"}
@@ -661,38 +661,38 @@ export function GenerationWorkspace({
                       <div
                         key={version.id}
                         onClick={() => loadBlock(version)}
-                        className={`rounded-lg px-3 py-2 text-xs transition-colors cursor-pointer no-underline ${
+                        className={`rounded-[--radius-md] px-3 py-2 text-xs transition-colors cursor-pointer no-underline ${
                           currentBlock?.id === version.id
-                            ? "bg-foreground/10 text-foreground"
-                            : "text-foreground/50 hover:bg-foreground/5"
+                            ? "bg-ct-cream text-ct-ink"
+                            : "text-ct-muted hover:bg-ct-cream"
                         }`}
                       >
                         <div>
                           <span className="font-medium">
                             Version {versionNum}
                           </span>
-                          <span className="text-foreground/30 ml-2">
+                          <span className="text-ct-rule ml-2">
                             {relativeTime(version.created_at)}
                           </span>
                         </div>
                         <div className="mt-0.5">
                           {visibleLines.length === 0 && (
-                            <span className="text-foreground/30">(empty)</span>
+                            <span className="text-ct-rule">(empty)</span>
                           )}
                           {visibleLines.map((line, li) => (
-                            <div key={li} className="text-foreground/30">
+                            <div key={li} className="text-ct-rule">
                               {line.spans.map((s, si) =>
                                 s.type === "added" ? (
                                   <span
                                     key={si}
-                                    className="bg-green-500/15 text-green-700 dark:text-green-400"
+                                    className="bg-ct-positive-bg text-ct-positive"
                                   >
                                     {s.text}
                                   </span>
                                 ) : s.type === "removed" ? (
                                   <span
                                     key={si}
-                                    className="bg-red-500/15 text-red-700 dark:text-red-400 line-through"
+                                    className="bg-ct-strike-bg text-ct-strike line-through"
                                   >
                                     {s.text}
                                   </span>
@@ -712,7 +712,7 @@ export function GenerationWorkspace({
                                   return next;
                                 });
                               }}
-                              className="text-foreground/40 hover:text-foreground/60 transition-colors"
+                              className="text-ct-muted hover:text-ct-muted transition-colors"
                             >
                               ...
                             </button>
@@ -727,7 +727,7 @@ export function GenerationWorkspace({
                                   return next;
                                 });
                               }}
-                              className="block text-foreground/40 hover:text-foreground/60 transition-colors mt-0.5"
+                              className="block text-ct-muted hover:text-ct-muted transition-colors mt-0.5"
                             >
                               show less
                             </button>
@@ -745,18 +745,18 @@ export function GenerationWorkspace({
 
       {/* AI area — notes + adjustments */}
       {currentBlock && (
-        <div className="mt-6 rounded-lg bg-foreground/5 p-4 space-y-4">
+        <div className="mt-6 rounded-[--radius-md] bg-ct-cream p-4 space-y-4">
           {/* Analysis */}
           {aiNotes?.generation_reasoning ? (
             <div>
-              <label className="block text-sm font-medium text-foreground/70 mb-2">
+              <label className="ct-label">
                 Analysis
               </label>
-              <div className="text-xs text-foreground/60 space-y-2">
+              <div className="text-xs text-ct-muted space-y-2">
                 <p>{aiNotes.generation_reasoning}</p>
                 {aiNotes.suggestions && aiNotes.suggestions.length > 0 && (
                   <div>
-                    <p className="font-medium text-foreground/50 mb-1">
+                    <p className="font-medium text-ct-muted mb-1">
                       Suggestions:
                     </p>
                     <ul className="list-disc list-inside space-y-0.5">
@@ -772,7 +772,7 @@ export function GenerationWorkspace({
             <button
               onClick={handleAnalyze}
               disabled={analyzing}
-              className="rounded-lg border border-foreground/10 px-3 py-1.5 text-xs text-foreground/60 hover:text-foreground transition-colors disabled:opacity-30"
+              className="ct-btn ct-btn-secondary text-xs disabled:opacity-30"
             >
               {analyzing ? "Analyzing..." : "Get Feedback"}
             </button>
@@ -780,7 +780,7 @@ export function GenerationWorkspace({
 
           {/* Adjustments */}
           <div>
-            <label className="block text-sm font-medium text-foreground/70 mb-2">
+            <label className="ct-label">
               Adjustments
             </label>
             <textarea
@@ -792,10 +792,10 @@ export function GenerationWorkspace({
               placeholder='e.g., "Make it shorter", "More casual tone", "Emphasize the guarantee"'
               rows={2}
               maxLength={1000}
-              className="w-full rounded-lg border border-foreground/10 bg-background px-3 py-2 text-sm text-foreground placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-foreground/20 resize-none"
+              className="ct-input resize-none"
             />
             <div className="flex items-center justify-between mt-1.5">
-              <span className="text-xs text-foreground/30">
+              <span className="text-xs text-ct-rule">
                 {typeof navigator !== "undefined" &&
                 navigator.platform?.includes("Mac")
                   ? "⌘"
@@ -805,7 +805,7 @@ export function GenerationWorkspace({
               <button
                 onClick={handleGenerate}
                 disabled={generating || !feedback.trim() || !canGenerate}
-                className="rounded-lg bg-foreground px-5 py-2 text-sm font-medium text-background transition-opacity disabled:opacity-30"
+                className="ct-btn ct-btn-primary disabled:opacity-30"
               >
                 {generating ? "Working..." : "Apply"}
               </button>
@@ -815,11 +815,11 @@ export function GenerationWorkspace({
       )}
 
       {error && !softLimit && (
-        <p className="mt-3 text-sm text-red-500">{error}</p>
+        <p className="mt-3 text-sm text-ct-strike">{error}</p>
       )}
 
       {softLimit && (
-        <div className="mt-4 rounded-lg border border-foreground/10 bg-foreground/5 p-4 text-sm text-foreground/70 space-y-2">
+        <div className="mt-4 rounded-[--radius-md] border border-ct-rule bg-ct-cream p-4 text-sm text-ct-muted space-y-2">
           <p>
             You&apos;ve hit today&apos;s generation limit. This tool is a free
             project by <strong>Bit Lore</strong>, a custom web development
@@ -833,13 +833,13 @@ export function GenerationWorkspace({
           <div className="flex items-center gap-3 pt-1">
             <a
               href="mailto:hello@bitlore.io"
-              className="rounded-lg bg-foreground px-4 py-1.5 text-xs font-medium text-background hover:opacity-90 transition-opacity"
+              className="ct-btn ct-btn-primary text-xs"
             >
               Get in touch
             </a>
             <a
               href="https://bitlore.io"
-              className="text-xs text-foreground/50 hover:text-foreground transition-colors"
+              className="text-xs text-ct-muted hover:text-ct-ink transition-colors"
               target="_blank"
               rel="noopener noreferrer"
             >

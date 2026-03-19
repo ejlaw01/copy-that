@@ -28,31 +28,31 @@ export function ServiceUnavailable({ onDismiss }: ServiceUnavailableProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-      <div className="mx-4 w-full max-w-sm rounded-xl border border-foreground/10 bg-background p-6 shadow-lg">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ct-paper/80 backdrop-blur-sm">
+      <div className="mx-4 w-full max-w-sm rounded-[--radius-md] border border-ct-rule bg-ct-paper p-6 shadow-[--shadow-md]">
         {sent ? (
           <>
-            <h3 className="text-lg font-semibold mb-2">Message sent</h3>
-            <p className="text-sm text-foreground/60 mb-4">
+            <h3 className="font-display text-lg font-semibold mb-2">Message sent</h3>
+            <p className="font-ui text-sm text-ct-muted mb-4">
               Thanks for letting me know. I&apos;ll look into it and get things
               back up as soon as possible.
             </p>
             <button
               onClick={onDismiss}
-              className="rounded-lg bg-foreground px-5 py-2 text-sm font-medium text-background"
+              className="ct-btn ct-btn-primary"
             >
               Close
             </button>
           </>
         ) : (
           <>
-            <h3 className="text-lg font-semibold mb-1">
+            <h3 className="font-display text-lg font-semibold mb-1">
               Service temporarily unavailable
             </h3>
-            <p className="text-sm text-foreground/50 mb-5">
+            <p className="font-ui text-sm text-ct-muted mb-5">
               The AI service has reached its monthly limit.
             </p>
-            <p className="text-sm text-foreground/50 mb-5">
+            <p className="font-ui text-sm text-ct-muted mb-5">
               If you&apos;re enjoying this tool, send me a note.
             </p>
 
@@ -62,14 +62,14 @@ export function ServiceUnavailable({ onDismiss }: ServiceUnavailableProps) {
                 placeholder="Your name (optional)"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                className="w-full rounded-lg border border-foreground/10 bg-background px-3 py-2 text-sm text-foreground placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-foreground/20"
+                className="ct-input"
               />
               <input
                 type="email"
                 placeholder="Your email (optional)"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full rounded-lg border border-foreground/10 bg-background px-3 py-2 text-sm text-foreground placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-foreground/20"
+                className="ct-input"
               />
               <textarea
                 placeholder="Leave a message..."
@@ -77,21 +77,21 @@ export function ServiceUnavailable({ onDismiss }: ServiceUnavailableProps) {
                 onChange={(e) => setMessage(e.target.value)}
                 rows={3}
                 maxLength={2000}
-                className="w-full rounded-lg border border-foreground/10 bg-background px-3 py-2 text-sm text-foreground placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-foreground/20 resize-none"
+                className="ct-textarea resize-none"
               />
 
               <div className="flex items-center justify-between">
                 <button
                   type="button"
                   onClick={onDismiss}
-                  className="text-sm text-foreground/40 hover:text-foreground transition-colors"
+                  className="font-ui text-sm text-ct-muted hover:text-ct-ink transition-colors"
                 >
                   Close
                 </button>
                 <button
                   type="submit"
                   disabled={sending || !message.trim()}
-                  className="rounded-lg bg-foreground px-5 py-2 text-sm font-medium text-background transition-opacity disabled:opacity-30"
+                  className="ct-btn ct-btn-primary disabled:opacity-30"
                 >
                   {sending ? "Sending..." : "Send"}
                 </button>

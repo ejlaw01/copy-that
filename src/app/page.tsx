@@ -272,19 +272,19 @@ export default function Home() {
   return (
     <div className="min-h-screen">
       {/* Header */}
-      <header className="flex items-center justify-between px-6 py-4 border-b border-foreground/5">
-        <h1 className="text-lg font-semibold tracking-tight">Copy That</h1>
+      <header className="flex items-center justify-between px-6 py-4 border-b border-ct-rule">
+        <h1 className="font-display text-lg font-semibold tracking-tight">Copy That</h1>
         <div className="flex items-center gap-3">
           {sessionIndicator && !isAuthenticated && activeContext && (
             <button
               onClick={() => setShowSavePrompt(true)}
-              className="text-xs text-foreground/30 hover:text-foreground/50 transition-colors"
+              className="text-xs text-ct-rule hover:text-ct-muted transition-colors"
             >
               unsaved — session only
             </button>
           )}
           {isAuthenticated && (
-            <span className="text-xs text-foreground/30">saved</span>
+            <span className="text-xs text-ct-rule">saved</span>
           )}
           <ThemeToggle />
         </div>
@@ -293,15 +293,15 @@ export default function Home() {
       <main className="px-6 py-8">
         <div className="mx-auto max-w-4xl">
           {/* Profile tabs */}
-          <div className="flex items-center gap-1 mb-6 border-b border-foreground/10 overflow-x-auto">
+          <div className="flex items-center gap-1 mb-6 border-b border-ct-rule overflow-x-auto">
             {contexts.map((c) => (
               <button
                 key={c.id}
                 onClick={() => switchToProfile(c.id)}
-                className={`shrink-0 px-4 py-2 text-sm transition-colors border-b-2 -mb-px ${
+                className={`shrink-0 px-4 py-2 text-sm font-ui transition-colors border-b-2 -mb-px ${
                   activeTab === c.id
-                    ? "border-foreground text-foreground font-medium"
-                    : "border-transparent text-foreground/40 hover:text-foreground/70"
+                    ? "border-ct-accent text-ct-ink font-medium"
+                    : "border-transparent text-ct-muted hover:text-ct-ink"
                 }`}
               >
                 {c.name || "Untitled"}
@@ -310,10 +310,10 @@ export default function Home() {
             {contexts.length < MAX_PROFILES && (
               <button
                 onClick={switchToNew}
-                className={`shrink-0 px-4 py-2 text-sm transition-colors border-b-2 -mb-px ${
+                className={`shrink-0 px-4 py-2 text-sm font-ui transition-colors border-b-2 -mb-px ${
                   activeTab === "new"
-                    ? "border-foreground text-foreground font-medium"
-                    : "border-transparent text-foreground/40 hover:text-foreground/70"
+                    ? "border-ct-accent text-ct-ink font-medium"
+                    : "border-transparent text-ct-muted hover:text-ct-ink"
                 }`}
               >
                 + New
@@ -326,7 +326,7 @@ export default function Home() {
             <div className="flex items-center gap-3 mb-4">
               <button
                 onClick={() => setBrandOpen(!brandOpen)}
-                className="flex items-center gap-2 text-sm font-medium text-foreground/70 hover:text-foreground transition-colors"
+                className="flex items-center gap-2 text-sm font-medium font-ui text-ct-muted hover:text-ct-ink transition-colors"
               >
                 <span className="text-xs">{brandOpen ? "▼" : "▶"}</span>
                 Profile
@@ -335,7 +335,7 @@ export default function Home() {
                 <div className="flex items-center gap-2">
                   <button
                     onClick={handleSaveEdits}
-                    className="text-xs text-foreground/60 hover:text-foreground transition-colors font-medium"
+                    className="text-xs font-ui font-medium text-ct-muted hover:text-ct-ink transition-colors"
                   >
                     Save
                   </button>
@@ -344,7 +344,7 @@ export default function Home() {
                       setForm(activeContext!);
                       setEditing(false);
                     }}
-                    className="text-xs text-foreground/30 hover:text-foreground/50 transition-colors"
+                    className="text-xs font-ui text-ct-rule hover:text-ct-muted transition-colors"
                   >
                     Cancel
                   </button>
@@ -358,7 +358,7 @@ export default function Home() {
                         setBrandOpen(true);
                         setEditing(true);
                       }}
-                      className="text-xs text-foreground/40 hover:text-foreground transition-colors"
+                      className="text-xs font-ui text-ct-muted hover:text-ct-ink transition-colors"
                     >
                       Edit
                     </button>
@@ -369,7 +369,7 @@ export default function Home() {
                         handleDelete(activeTab);
                       }
                     }}
-                    className="text-xs text-foreground/20 hover:text-red-500 transition-colors"
+                    className="text-xs font-ui text-ct-rule hover:text-ct-strike transition-colors"
                   >
                     Delete
                   </button>
@@ -422,9 +422,9 @@ function BrandReadOnly({ context }: { context: BrandContext }) {
       {context.tone_examples && <Row label="Voice sample" value={context.tone_examples} />}
       {context.source_url && <Row label="Website" value={context.source_url} />}
       {context.voice_profile && (
-        <div className="border-t border-foreground/5 pt-3 mt-3">
-          <span className="text-xs text-foreground/40">Generated Voice Profile</span>
-          <p className="text-xs text-foreground/50 mt-1 leading-relaxed">{context.voice_profile}</p>
+        <div className="border-t border-ct-rule pt-3 mt-3">
+          <span className="text-[length:--text-xs] text-ct-muted">Generated Voice Profile</span>
+          <p className="text-[length:--text-xs] text-ct-muted mt-1 leading-relaxed">{context.voice_profile}</p>
         </div>
       )}
     </div>
@@ -435,8 +435,8 @@ function Row({ label, value }: { label: string; value: string }) {
   if (!value) return null;
   return (
     <div className="flex gap-4">
-      <span className="shrink-0 w-28 text-foreground/40">{label}</span>
-      <span className="text-foreground/70">{value}</span>
+      <span className="shrink-0 w-28 text-ct-muted">{label}</span>
+      <span className="text-ct-ink">{value}</span>
     </div>
   );
 }
@@ -496,8 +496,8 @@ function BrandForm({
         placeholder="Add your own…"
       />
 
-      <div className="border-t border-foreground/5 pt-4 mt-2">
-        <p className="text-xs text-foreground/40 mb-4">Optional — helps us dial in the voice</p>
+      <div className="border-t border-ct-rule pt-4 mt-2">
+        <p className="text-xs text-ct-muted mb-4">Optional — helps us dial in the voice</p>
         <div className="space-y-4">
           <Field
             id="tone-examples"
@@ -519,7 +519,7 @@ function BrandForm({
       </div>
 
       {isNew && !canGenerate && (
-        <p className="text-xs text-foreground/30">
+        <p className="text-xs text-ct-rule">
           Fill in the required fields above to start generating
         </p>
       )}
@@ -546,12 +546,9 @@ function Field({
   multiline?: boolean;
   maxLength?: number;
 }) {
-  const cls =
-    "w-full rounded-lg border border-foreground/10 bg-background px-3 py-2 text-sm text-foreground placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-foreground/20";
-
   return (
     <label htmlFor={id} className="block">
-      <span className="mb-1 block text-sm font-medium text-foreground/70">{label}</span>
+      <span className="ct-label">{label}</span>
       {multiline ? (
         <textarea
           id={id}
@@ -561,7 +558,7 @@ function Field({
           onChange={(e) => onChange(e.target.value)}
           maxLength={maxLength}
           rows={3}
-          className={cls + " resize-none"}
+          className="ct-textarea resize-none"
         />
       ) : (
         <input
@@ -572,7 +569,7 @@ function Field({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           maxLength={maxLength}
-          className={cls}
+          className="ct-input"
         />
       )}
     </label>
@@ -631,7 +628,7 @@ function ChipPicker({
 
   return (
     <div>
-      <span className="mb-1 block text-sm font-medium text-foreground/70">{label}</span>
+      <span className="ct-label">{label}</span>
 
       {/* Selected chips */}
       <div className="flex flex-wrap gap-2 min-h-[2rem] items-center">
@@ -639,7 +636,7 @@ function ChipPicker({
           selected.map((chip) => (
             <span
               key={chip}
-              className="inline-flex items-center gap-1 rounded-full bg-foreground text-background px-3 py-1 text-xs"
+              className="ct-tag inline-flex items-center gap-1"
             >
               {chip}
               <button
@@ -653,15 +650,15 @@ function ChipPicker({
             </span>
           ))
         ) : (
-          <span className="text-xs text-foreground/30">No selections yet</span>
+          <span className="text-xs text-ct-rule">No selections yet</span>
         )}
       </div>
 
-      <hr className="border-foreground/10 my-2" />
+      <hr className="border-ct-rule my-2" />
 
       {/* Suggestions + custom input */}
       <div className="flex flex-wrap gap-2">
-        <span className="inline-flex items-center rounded-full border border-foreground/20 bg-background pr-1.5">
+        <span className="inline-flex items-center rounded-full border border-ct-rule bg-ct-paper pr-1.5">
           <input
             ref={inputRef}
             type="text"
@@ -678,7 +675,7 @@ function ChipPicker({
               }
             }}
             placeholder={placeholder}
-            className="rounded-full bg-transparent pl-3 py-1 text-xs text-foreground placeholder:text-foreground/30 focus:outline-none w-28"
+            className="rounded-full bg-transparent pl-3 py-1 text-xs font-ui text-ct-ink placeholder:text-ct-rule focus:outline-none w-28"
           />
           <button
             type="button"
@@ -687,7 +684,7 @@ function ChipPicker({
               setCustomValue("");
               inputRef.current?.focus();
             }}
-            className="flex items-center justify-center w-4 h-4 rounded-full border border-foreground/20 text-foreground/40 hover:text-foreground hover:border-foreground/40 transition-colors"
+            className="flex items-center justify-center w-4 h-4 rounded-full border border-ct-rule text-ct-muted hover:text-ct-ink hover:border-ct-muted transition-colors"
             aria-label="Add custom value"
           >
             <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
@@ -700,7 +697,7 @@ function ChipPicker({
             key={option}
             type="button"
             onClick={() => addChip(option)}
-            className="rounded-full px-3 py-1 text-xs bg-foreground/5 text-foreground/50 hover:text-foreground hover:bg-foreground/10 transition-colors"
+            className="rounded-full px-3 py-1 text-xs font-ui bg-ct-cream text-ct-muted hover:text-ct-ink hover:bg-ct-rule transition-colors"
           >
             {option}
           </button>

@@ -42,10 +42,10 @@ export function SavePrompt({ onAuthComplete, onDismiss }: SavePromptProps) {
 
   if (submitted) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-        <div className="mx-4 w-full max-w-sm rounded-xl border border-foreground/10 bg-background p-6 shadow-lg">
-          <h3 className="text-lg font-semibold mb-2">Check your email</h3>
-          <p className="text-sm text-foreground/60">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-ct-paper/80 backdrop-blur-sm">
+        <div className="mx-4 w-full max-w-sm rounded-[--radius-md] border border-ct-rule bg-ct-paper p-6 shadow-[--shadow-md]">
+          <h3 className="font-display text-lg font-semibold mb-2">Check your email</h3>
+          <p className="font-ui text-sm text-ct-muted">
             We sent a magic link to <strong>{email}</strong>. Click it to save
             your work and unlock more generations.
           </p>
@@ -55,10 +55,10 @@ export function SavePrompt({ onAuthComplete, onDismiss }: SavePromptProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
-      <div className="mx-4 w-full max-w-sm rounded-xl border border-foreground/10 bg-background p-6 shadow-lg">
-        <h3 className="text-lg font-semibold mb-1">Save your work</h3>
-        <p className="text-sm text-foreground/50 mb-5">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ct-paper/80 backdrop-blur-sm">
+      <div className="mx-4 w-full max-w-sm rounded-[--radius-md] border border-ct-rule bg-ct-paper p-6 shadow-[--shadow-md]">
+        <h3 className="font-display text-lg font-semibold mb-1">Save your work</h3>
+        <p className="font-ui text-sm text-ct-muted mb-5">
           Enter your email to save your brand voices and copy, and unlock more
           generations.
         </p>
@@ -70,7 +70,7 @@ export function SavePrompt({ onAuthComplete, onDismiss }: SavePromptProps) {
             placeholder="you@example.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full rounded-lg border border-foreground/10 bg-background px-3 py-2 text-sm text-foreground placeholder:text-foreground/30 focus:outline-none focus:ring-1 focus:ring-foreground/20"
+            className="ct-input"
           />
 
           <label className="flex items-start gap-2 cursor-pointer">
@@ -78,36 +78,36 @@ export function SavePrompt({ onAuthComplete, onDismiss }: SavePromptProps) {
               type="checkbox"
               checked={marketingConsent}
               onChange={(e) => setMarketingConsent(e.target.checked)}
-              className="mt-0.5 rounded border-foreground/20"
+              className="mt-0.5 rounded-[--radius-sm] border-ct-rule"
             />
-            <span className="text-sm text-foreground/60">
+            <span className="font-ui text-sm text-ct-muted">
               Keep me posted on new features
             </span>
           </label>
 
-          <p className="text-xs text-foreground/30">
+          <p className="text-[length:--text-xs] text-ct-muted">
             I will never sell your personal information. Your email is used to
             save your project and, if you opt in, to hear about updates.
             That&apos;s it.{" "}
-            <a href="/privacy" className="underline hover:text-foreground/50">
+            <a href="/privacy" className="underline hover:text-ct-ink">
               Privacy policy
             </a>
           </p>
 
-          {error && <p className="text-sm text-red-500">{error}</p>}
+          {error && <p className="font-ui text-sm text-ct-strike">{error}</p>}
 
           <div className="flex items-center justify-between">
             <button
               type="button"
               onClick={onDismiss}
-              className="text-sm text-foreground/40 hover:text-foreground transition-colors"
+              className="font-ui text-sm text-ct-muted hover:text-ct-ink transition-colors"
             >
               Not now
             </button>
             <button
               type="submit"
               disabled={loading}
-              className="rounded-lg bg-foreground px-5 py-2 text-sm font-medium text-background transition-opacity disabled:opacity-50"
+              className="ct-btn ct-btn-primary disabled:opacity-50"
             >
               {loading ? "Sending..." : "Save & Continue"}
             </button>

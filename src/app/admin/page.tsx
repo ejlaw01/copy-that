@@ -70,15 +70,15 @@ export default async function AdminPage() {
   const stats = await getStats();
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <header className="border-b border-foreground/5 px-6 py-4">
-        <h1 className="text-lg font-semibold tracking-tight">Copy That — Admin</h1>
+    <div className="min-h-screen bg-ct-paper text-ct-ink">
+      <header className="border-b border-ct-rule px-6 py-4">
+        <h1 className="font-display text-lg font-semibold tracking-tight">Copy That — Admin</h1>
       </header>
 
       <main className="mx-auto max-w-3xl px-6 py-10 space-y-8">
         {/* Overview */}
         <section>
-          <h2 className="text-sm font-medium text-foreground/40 uppercase tracking-wider mb-4">Overview</h2>
+          <h2 className="ct-label mb-4">Overview</h2>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             <StatCard label="Total Users" value={stats.totalUsers} />
             <StatCard label="Marketing Opt-in" value={stats.marketingConsent} />
@@ -89,7 +89,7 @@ export default async function AdminPage() {
 
         {/* Generation Activity */}
         <section>
-          <h2 className="text-sm font-medium text-foreground/40 uppercase tracking-wider mb-4">Generation Activity</h2>
+          <h2 className="ct-label mb-4">Generation Activity</h2>
           <div className="grid grid-cols-3 gap-4">
             <StatCard label="Today" value={stats.todayGenerations} />
             <StatCard label="This Week" value={stats.weekGenerations} />
@@ -100,12 +100,12 @@ export default async function AdminPage() {
         {/* Top Components */}
         {stats.topComponents.length > 0 && (
           <section>
-            <h2 className="text-sm font-medium text-foreground/40 uppercase tracking-wider mb-4">Top Component Types</h2>
+            <h2 className="ct-label mb-4">Top Component Types</h2>
             <div className="space-y-2">
               {stats.topComponents.map(([type, count]) => (
-                <div key={type} className="flex items-center justify-between rounded-lg bg-foreground/5 px-4 py-2 text-sm">
+                <div key={type} className="flex items-center justify-between rounded-[--radius-md] bg-ct-cream px-4 py-2 text-sm">
                   <span>{type}</span>
-                  <span className="text-foreground/50">{count}</span>
+                  <span className="text-ct-muted">{count}</span>
                 </div>
               ))}
             </div>
@@ -115,10 +115,10 @@ export default async function AdminPage() {
         {/* Recent Signups */}
         {stats.recentSignups.length > 0 && (
           <section>
-            <h2 className="text-sm font-medium text-foreground/40 uppercase tracking-wider mb-4">Recent Signups</h2>
+            <h2 className="ct-label mb-4">Recent Signups</h2>
             <div className="space-y-1">
               {stats.recentSignups.map((u: { id: string; created_at: string }) => (
-                <div key={u.id} className="text-sm text-foreground/60">
+                <div key={u.id} className="text-sm text-ct-muted">
                   {new Date(u.created_at).toLocaleDateString()} — {u.id.slice(0, 8)}...
                 </div>
               ))}
@@ -132,9 +132,9 @@ export default async function AdminPage() {
 
 function StatCard({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-lg border border-foreground/10 px-4 py-3">
-      <p className="text-2xl font-semibold">{value}</p>
-      <p className="text-xs text-foreground/40">{label}</p>
+    <div className="rounded-[--radius-md] border border-ct-rule px-4 py-3">
+      <p className="font-display text-2xl font-semibold">{value}</p>
+      <p className="text-[length:--text-xs] text-ct-muted">{label}</p>
     </div>
   );
 }

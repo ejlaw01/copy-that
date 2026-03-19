@@ -59,17 +59,17 @@ function ToolbarButton({
       onClick={onClick}
       aria-label={label}
       aria-pressed={active}
-      className={`group/tip relative rounded p-1.5 transition-colors ${
+      className={`group/tip relative rounded-[--radius-sm] p-1.5 transition-colors ${
         active
-          ? "bg-foreground/10 text-foreground"
-          : "text-foreground/40 hover:text-foreground"
+          ? "bg-ct-cream text-ct-ink"
+          : "text-ct-muted hover:text-ct-ink"
       }`}
     >
       {children}
       <span
         role="tooltip"
         className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2
-          rounded bg-foreground px-2 py-0.5 text-[11px] leading-tight text-background whitespace-nowrap
+          rounded-[--radius-sm] bg-ct-ink px-2 py-0.5 text-[11px] leading-tight text-ct-paper whitespace-nowrap
           opacity-0 scale-95 transition-all duration-150
           group-hover/tip:opacity-100 group-hover/tip:scale-100 group-hover/tip:delay-500"
       >
@@ -84,7 +84,7 @@ function ToolbarDivider() {
     <div
       role="separator"
       aria-orientation="vertical"
-      className="mx-1 h-4 w-px bg-foreground/10"
+      className="mx-1 h-4 w-px bg-ct-rule"
     />
   );
 }
@@ -171,12 +171,12 @@ export const ComponentEditor = forwardRef<ComponentEditorHandle, ComponentEditor
 
   const charColor =
     maxChars && charCount > maxChars
-      ? "text-red-500"
+      ? "text-ct-strike"
       : maxChars && charCount > maxChars * 0.9
-        ? "text-yellow-500"
+        ? "text-ct-highlight"
         : minChars && charCount < minChars
-          ? "text-yellow-500"
-          : "text-foreground/40";
+          ? "text-ct-highlight"
+          : "text-ct-muted";
 
   const handleSourceChange = useCallback(
     (html: string) => {
@@ -196,13 +196,13 @@ export const ComponentEditor = forwardRef<ComponentEditorHandle, ComponentEditor
   if (!editor) return null;
 
   return (
-    <div className="rounded-lg border border-foreground/10 bg-background">
+    <div className="rounded-[--radius-md] border border-ct-rule bg-ct-paper">
       {/* Toolbar — only for multi-line mode */}
       {!singleLine && (
         <div
           role="toolbar"
           aria-label="Formatting options"
-          className="flex flex-wrap items-center gap-0.5 border-b border-foreground/10 px-2 py-1"
+          className="flex flex-wrap items-center gap-0.5 border-b border-ct-rule px-2 py-1"
         >
           {/* Group 1: Inline formatting */}
           <ToolbarButton
@@ -259,7 +259,7 @@ export const ComponentEditor = forwardRef<ComponentEditorHandle, ComponentEditor
                   .run();
               }
             }}
-            className="h-7 rounded border-none bg-transparent px-1 text-xs text-foreground/60 hover:text-foreground focus:outline-none cursor-pointer"
+            className="h-7 rounded-[--radius-sm] border-none bg-transparent px-1 text-xs font-ui text-ct-muted hover:text-ct-ink focus:outline-none cursor-pointer"
             aria-label="Block type"
           >
             <option value="paragraph">Paragraph</option>
@@ -330,7 +330,7 @@ export const ComponentEditor = forwardRef<ComponentEditorHandle, ComponentEditor
         <textarea
           value={sourceHtml}
           onChange={(e) => handleSourceChange(e.target.value)}
-          className="w-full min-h-[6rem] bg-background px-3 py-2 font-mono text-sm text-foreground focus:outline-none"
+          className="w-full min-h-[6rem] bg-ct-paper px-3 py-2 font-mono text-sm text-ct-ink focus:outline-none"
           spellCheck={false}
         />
       ) : (
@@ -338,7 +338,7 @@ export const ComponentEditor = forwardRef<ComponentEditorHandle, ComponentEditor
       )}
 
       {/* Footer: char count + source toggle */}
-      <div className="flex items-center justify-between border-t border-foreground/10 px-3 py-1.5">
+      <div className="flex items-center justify-between border-t border-ct-rule px-3 py-1.5">
         <span className={`text-xs ${charColor}`}>
           {charCount}
           {maxChars ? ` / ${maxChars}` : ""}
@@ -346,7 +346,7 @@ export const ComponentEditor = forwardRef<ComponentEditorHandle, ComponentEditor
         </span>
         <button
           onClick={toggleSource}
-          className="text-xs text-foreground/40 hover:text-foreground transition-colors"
+          className="text-xs text-ct-muted hover:text-ct-ink transition-colors"
         >
           {showSource ? "Rich Text" : "HTML"}
         </button>
