@@ -287,6 +287,48 @@ body {
 }
 
 /* ============================================================
+   PROSE & PROSEMIRROR — RTE typography overrides
+   ============================================================ */
+
+.prose,
+.ProseMirror {
+  font-family: var(--font-ui), 'Helvetica Neue', sans-serif;
+  color: var(--ct-ink);
+  line-height: 1.7;
+}
+
+.prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6,
+.ProseMirror h1, .ProseMirror h2, .ProseMirror h3, .ProseMirror h4, .ProseMirror h5, .ProseMirror h6 {
+  font-family: var(--font-display), Georgia, serif;
+  color: var(--ct-ink);
+}
+
+.prose a,
+.ProseMirror a {
+  color: var(--ct-accent);
+}
+
+.prose blockquote,
+.ProseMirror blockquote {
+  border-left-color: var(--ct-accent);
+}
+
+.prose hr,
+.ProseMirror hr {
+  border-color: var(--ct-rule);
+}
+
+.prose code,
+.ProseMirror code {
+  font-family: var(--font-mono), 'Courier New', monospace;
+}
+
+.prose p,
+.ProseMirror p {
+  font-family: var(--font-ui), 'Helvetica Neue', sans-serif;
+}
+
+/* ============================================================
    REDUCED MOTION — must be last in cascade
    ============================================================ */
 
