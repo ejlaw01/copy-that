@@ -35,7 +35,7 @@ export function BrandContextForm({ initial, onComplete }: BrandContextFormProps)
   }
 
   function canSubmit(): boolean {
-    return !!(form.name && form.business_name && form.business_description && form.audience && form.tone);
+    return !!form.name;
   }
 
   async function handleFinish() {

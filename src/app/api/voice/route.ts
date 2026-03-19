@@ -15,9 +15,9 @@ export async function POST(req: NextRequest) {
     competitor_analysis,
   } = body;
 
-  if (!business_name || !business_description || !audience || !tone) {
+  if (!business_name && !business_description && !audience && !tone) {
     return NextResponse.json(
-      { error: "Missing required fields" },
+      { error: "At least one brand field is required" },
       { status: 400 }
     );
   }
@@ -55,9 +55,9 @@ export async function POST(req: NextRequest) {
 - What to avoid (jargon, clichés, competitor language)
 
 Brand information:
-- Business: ${business_name} — ${business_description}
-- Audience: ${audience}
-- Desired tone: ${tone}
+${business_name ? `- Business: ${business_name}${business_description ? ` — ${business_description}` : ""}` : ""}
+${audience ? `- Audience: ${audience}` : ""}
+${tone ? `- Desired tone: ${tone}` : ""}
 ${tone_examples ? `- Copy they like: ${tone_examples}` : ""}
 ${competitors ? `- Competitors/inspiration: ${competitors}` : ""}${contextBlock}`,
       1024

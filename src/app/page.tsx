@@ -206,7 +206,7 @@ export default function Home() {
   async function ensureContext(): Promise<BrandContext | null> {
     if (activeContext?.voice_profile) return activeContext;
 
-    if (!form.name || !form.business_name || !form.business_description || !form.audience || !form.tone) {
+    if (!form.name) {
       return null;
     }
 
@@ -267,7 +267,7 @@ export default function Home() {
     return ctx;
   }
 
-  const canGenerate = !!(form.name && form.business_name && form.business_description && form.audience && form.tone);
+  const canGenerate = !!form.name;
 
   return (
     <div className="min-h-screen">
@@ -458,8 +458,8 @@ function BrandForm({
     <div className="space-y-4">
       <Field
         id="profile-name"
-        label="Profile Name"
-        placeholder='e.g., "Bit Lore", "Personal", "Client — Rioja Wine"'
+        label="Profile Name *"
+        placeholder='e.g., "Bit Lore", "Personal", "Client — Acme Co"'
         value={form.name ?? ""}
         onChange={(v) => update({ name: v })}
       />
