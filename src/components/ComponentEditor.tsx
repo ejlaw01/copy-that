@@ -3,8 +3,95 @@
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import CharacterCount from "@tiptap/extension-character-count";
-import { useCallback, useEffect, useState } from "react";
+import Link from "@tiptap/extension-link";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useState } from "react";
 import type { TipTapDoc } from "@/lib/tiptap-utils";
+import {
+  Bold,
+  Italic,
+  Strikethrough,
+  Code,
+  List,
+  ListOrdered,
+  Quote,
+  Link2,
+  Minus,
+} from "lucide-react";
+
+// Block-level tags that should start on their own line
+const BLOCK_TAGS = /^\/?(p|h[1-6]|ul|ol|li|blockquote|hr|div|pre|table|thead|tbody|tr|th|td)$/i;
+
+function formatHtml(html: string): string {
+  let indent = 0;
+  return html
+    .replace(/></g, ">\n<")
+    .split("\n")
+    .map((line) => {
+      const closing = line.match(/^<\/(\w+)/);
+      if (closing && BLOCK_TAGS.test(closing[1])) indent = Math.max(0, indent - 1);
+
+      const result = "  ".repeat(indent) + line;
+
+      const opening = line.match(/^<(\w+)/);
+      const selfClosing = /\/>$/.test(line) || /^<hr/.test(line);
+      if (opening && BLOCK_TAGS.test(opening[1]) && !selfClosing && !closing) indent++;
+
+      return result;
+    })
+    .join("\n");
+}
+
+// --- Toolbar helpers ---
+
+function ToolbarButton({
+  onClick,
+  active,
+  label,
+  children,
+}: {
+  onClick: () => void;
+  active: boolean;
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      aria-label={label}
+      aria-pressed={active}
+      className={`group/tip relative rounded p-1.5 transition-colors ${
+        active
+          ? "bg-foreground/10 text-foreground"
+          : "text-foreground/40 hover:text-foreground"
+      }`}
+    >
+      {children}
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2
+          rounded bg-foreground px-2 py-0.5 text-[11px] leading-tight text-background whitespace-nowrap
+          opacity-0 scale-95 transition-all duration-150
+          group-hover/tip:opacity-100 group-hover/tip:scale-100 group-hover/tip:delay-500"
+      >
+        {label}
+      </span>
+    </button>
+  );
+}
+
+function ToolbarDivider() {
+  return (
+    <div
+      role="separator"
+      aria-orientation="vertical"
+      className="mx-1 h-4 w-px bg-foreground/10"
+    />
+  );
+}
+
+export interface ComponentEditorHandle {
+  exitSourceView: () => void;
+}
 
 interface ComponentEditorProps {
   content: TipTapDoc;
@@ -14,21 +101,20 @@ interface ComponentEditorProps {
   singleLine?: boolean;
 }
 
-export function ComponentEditor({
-  content,
-  maxChars,
-  minChars,
-  onChange,
-  singleLine,
-}: ComponentEditorProps) {
+export const ComponentEditor = forwardRef<ComponentEditorHandle, ComponentEditorProps>(
+  function ComponentEditor({ content, maxChars, minChars, onChange, singleLine }, ref) {
   const [showSource, setShowSource] = useState(false);
   const [sourceHtml, setSourceHtml] = useState("");
+
+  useImperativeHandle(ref, () => ({
+    exitSourceView: () => setShowSource(false),
+  }));
 
   const editor = useEditor({
     immediatelyRender: false,
     extensions: [
       StarterKit.configure({
-        heading: singleLine ? false : undefined,
+        heading: singleLine ? false : { levels: [1, 2, 3, 4, 5, 6] },
         bulletList: singleLine ? false : undefined,
         orderedList: singleLine ? false : undefined,
         blockquote: singleLine ? false : undefined,
@@ -38,6 +124,17 @@ export function ComponentEditor({
       CharacterCount.configure({
         limit: maxChars,
       }),
+      ...(!singleLine
+        ? [
+            Link.configure({
+              openOnClick: false,
+              HTMLAttributes: {
+                target: "_blank",
+                rel: "noopener noreferrer",
+              },
+            }),
+          ]
+        : []),
     ],
     content,
     editorProps: {
@@ -52,7 +149,7 @@ export function ComponentEditor({
         : undefined,
       attributes: {
         class:
-          "prose prose-sm dark:prose-invert max-w-none focus:outline-none min-h-[2.5rem] px-3 py-2",
+          "prose dark:prose-invert max-w-none focus:outline-none min-h-[2.5rem] px-3 py-2",
       },
     },
     onUpdate: ({ editor }) => {
@@ -86,12 +183,12 @@ export function ComponentEditor({
       setSourceHtml(html);
       editor?.commands.setContent(html);
     },
-    [editor]
+    [editor],
   );
 
   const toggleSource = useCallback(() => {
     if (!showSource && editor) {
-      setSourceHtml(editor.getHTML());
+      setSourceHtml(formatHtml(editor.getHTML()));
     }
     setShowSource((prev) => !prev);
   }, [showSource, editor]);
@@ -100,29 +197,131 @@ export function ComponentEditor({
 
   return (
     <div className="rounded-lg border border-foreground/10 bg-background">
-      {/* Toolbar — only for paragraph mode */}
+      {/* Toolbar — only for multi-line mode */}
       {!singleLine && (
-        <div className="flex items-center gap-1 border-b border-foreground/10 px-2 py-1">
-          <button
+        <div
+          role="toolbar"
+          aria-label="Formatting options"
+          className="flex flex-wrap items-center gap-0.5 border-b border-foreground/10 px-2 py-1"
+        >
+          {/* Group 1: Inline formatting */}
+          <ToolbarButton
             onClick={() => editor.chain().focus().toggleBold().run()}
-            className={`rounded px-2 py-1 text-sm transition-colors ${
-              editor.isActive("bold")
-                ? "bg-foreground/10 text-foreground"
-                : "text-foreground/50 hover:text-foreground"
-            }`}
+            active={editor.isActive("bold")}
+            label="Bold"
           >
-            B
-          </button>
-          <button
+            <Bold size={16} />
+          </ToolbarButton>
+          <ToolbarButton
             onClick={() => editor.chain().focus().toggleItalic().run()}
-            className={`rounded px-2 py-1 text-sm italic transition-colors ${
-              editor.isActive("italic")
-                ? "bg-foreground/10 text-foreground"
-                : "text-foreground/50 hover:text-foreground"
-            }`}
+            active={editor.isActive("italic")}
+            label="Italic"
           >
-            I
-          </button>
+            <Italic size={16} />
+          </ToolbarButton>
+          <ToolbarButton
+            onClick={() => editor.chain().focus().toggleStrike().run()}
+            active={editor.isActive("strike")}
+            label="Strikethrough"
+          >
+            <Strikethrough size={16} />
+          </ToolbarButton>
+          <ToolbarButton
+            onClick={() => editor.chain().focus().toggleCode().run()}
+            active={editor.isActive("code")}
+            label="Inline Code"
+          >
+            <Code size={16} />
+          </ToolbarButton>
+
+          <ToolbarDivider />
+
+          {/* Group 2: Heading dropdown */}
+          <select
+            value={
+              [1, 2, 3, 4, 5, 6].find((l) =>
+                editor.isActive("heading", { level: l }),
+              )
+                ? `h${[1, 2, 3, 4, 5, 6].find((l) => editor.isActive("heading", { level: l }))}`
+                : "paragraph"
+            }
+            onChange={(e) => {
+              const val = e.target.value;
+              if (val === "paragraph") {
+                editor.chain().focus().setParagraph().run();
+              } else {
+                editor
+                  .chain()
+                  .focus()
+                  .toggleHeading({
+                    level: parseInt(val[1]) as 1 | 2 | 3 | 4 | 5 | 6,
+                  })
+                  .run();
+              }
+            }}
+            className="h-7 rounded border-none bg-transparent px-1 text-xs text-foreground/60 hover:text-foreground focus:outline-none cursor-pointer"
+            aria-label="Block type"
+          >
+            <option value="paragraph">Paragraph</option>
+            <option value="h1">Heading 1</option>
+            <option value="h2">Heading 2</option>
+            <option value="h3">Heading 3</option>
+            <option value="h4">Heading 4</option>
+            <option value="h5">Heading 5</option>
+            <option value="h6">Heading 6</option>
+          </select>
+
+          <ToolbarDivider />
+
+          {/* Group 3: Lists & blockquote */}
+          <ToolbarButton
+            onClick={() => editor.chain().focus().toggleBulletList().run()}
+            active={editor.isActive("bulletList")}
+            label="Bullet List"
+          >
+            <List size={16} />
+          </ToolbarButton>
+          <ToolbarButton
+            onClick={() => editor.chain().focus().toggleOrderedList().run()}
+            active={editor.isActive("orderedList")}
+            label="Ordered List"
+          >
+            <ListOrdered size={16} />
+          </ToolbarButton>
+          <ToolbarButton
+            onClick={() => editor.chain().focus().toggleBlockquote().run()}
+            active={editor.isActive("blockquote")}
+            label="Blockquote"
+          >
+            <Quote size={16} />
+          </ToolbarButton>
+
+          <ToolbarDivider />
+
+          {/* Group 4: Link & horizontal rule */}
+          <ToolbarButton
+            onClick={() => {
+              if (editor.isActive("link")) {
+                editor.chain().focus().unsetLink().run();
+                return;
+              }
+              const url = window.prompt("URL:");
+              if (url) {
+                editor.chain().focus().setLink({ href: url }).run();
+              }
+            }}
+            active={editor.isActive("link")}
+            label="Link"
+          >
+            <Link2 size={16} />
+          </ToolbarButton>
+          <ToolbarButton
+            onClick={() => editor.chain().focus().setHorizontalRule().run()}
+            active={false}
+            label="Horizontal Rule"
+          >
+            <Minus size={16} />
+          </ToolbarButton>
         </div>
       )}
 
@@ -154,4 +353,4 @@ export function ComponentEditor({
       </div>
     </div>
   );
-}
+});

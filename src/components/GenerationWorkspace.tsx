@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
-import { ComponentEditor } from "@/components/ComponentEditor";
+import { ComponentEditor, type ComponentEditorHandle } from "@/components/ComponentEditor";
 import { Turnstile } from "@/components/Turnstile";
 import { ServiceUnavailable } from "@/components/ServiceUnavailable";
 import { CONTENT_CATEGORIES, CATEGORY_KEYS } from "@/lib/component-types";
@@ -167,6 +167,7 @@ export function GenerationWorkspace({
   onGenerate,
 }: GenerationWorkspaceProps) {
   const [generating, setGenerating] = useState(false);
+  const editorRef = useRef<ComponentEditorHandle>(null);
   const turnstileTokenRef = useRef<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [softLimit, setSoftLimit] = useState(false);
@@ -385,6 +386,7 @@ export function GenerationWorkspace({
 
   function handleSaveVersion() {
     if (!currentBlock) return;
+    editorRef.current?.exitSourceView();
     const newBlock: CopyBlock = {
       ...currentBlock,
       id: crypto.randomUUID(),
@@ -576,6 +578,7 @@ export function GenerationWorkspace({
       {currentBlock && (
         <div className="space-y-4">
           <ComponentEditor
+            ref={editorRef}
             content={currentBlock.content as TipTapDoc}
             onChange={handleContentChange}
           />
