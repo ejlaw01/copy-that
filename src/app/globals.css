@@ -4,25 +4,83 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* --- Palette --- */
+  --ct-ink:           #1c1917;
+  --ct-paper:         #f7f3ed;
+  --ct-cream:         #ede8df;
+  --ct-rule:          #cdc5b4;
+  --ct-muted:         #7d7468;
+  --ct-accent:        #b85c2c;
+  --ct-accent-hover:  #9e4d22;
+  --ct-accent-light:  #e8c4ae;
+  --ct-positive:      #3d6b4a;
+  --ct-positive-bg:   #ddeee3;
+  --ct-highlight:     #f5e16a;
+  --ct-highlight-bg:  #fdf9d6;
+  --ct-strike:        #b03030;
+  --ct-strike-bg:     #f5e0e0;
+  --ct-invert-bg:     #1c1917;
+  --ct-invert-text:   #f7f3ed;
+  --ct-invert-muted:  #9a9080;
+  --ct-invert-rule:   #332e29;
+
+  /* --- Backward compatibility aliases --- */
+  --background: var(--ct-paper);
+  --foreground: var(--ct-ink);
 }
 
 .dark {
-  --background: #0a0a0a;
-  --foreground: #ededed;
+  --ct-paper:         #1c1917;
+  --ct-ink:           #f7f3ed;
+  --ct-cream:         #292524;
+  --ct-rule:          #44403c;
+  --ct-muted:         #a8a29e;
+  --ct-accent:        #d4845a;
+  --ct-accent-hover:  #e09570;
+  --ct-accent-light:  #3d2e24;
+  --ct-positive:      #6db87a;
+  --ct-positive-bg:   #1a2e1f;
+  --ct-highlight:     #d4c24e;
+  --ct-highlight-bg:  #2e2a16;
+  --ct-strike:        #e05050;
+  --ct-strike-bg:     #2e1a1a;
+  --ct-invert-bg:     #f7f3ed;
+  --ct-invert-text:   #1c1917;
+  --ct-invert-muted:  #7d7468;
+  --ct-invert-rule:   #cdc5b4;
+
+  --background: var(--ct-paper);
+  --foreground: var(--ct-ink);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-ct-ink: var(--ct-ink);
+  --color-ct-paper: var(--ct-paper);
+  --color-ct-cream: var(--ct-cream);
+  --color-ct-rule: var(--ct-rule);
+  --color-ct-muted: var(--ct-muted);
+  --color-ct-accent: var(--ct-accent);
+  --color-ct-accent-hover: var(--ct-accent-hover);
+  --color-ct-accent-light: var(--ct-accent-light);
+  --color-ct-positive: var(--ct-positive);
+  --color-ct-positive-bg: var(--ct-positive-bg);
+  --color-ct-highlight: var(--ct-highlight);
+  --color-ct-highlight-bg: var(--ct-highlight-bg);
+  --color-ct-strike: var(--ct-strike);
+  --color-ct-strike-bg: var(--ct-strike-bg);
+  --color-ct-invert-bg: var(--ct-invert-bg);
+  --color-ct-invert-text: var(--ct-invert-text);
+  --color-ct-invert-muted: var(--ct-invert-muted);
+  --color-ct-invert-rule: var(--ct-invert-rule);
   --font-display: var(--font-display);
   --font-mono: var(--font-mono);
   --font-ui: var(--font-ui);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
+  background: var(--ct-paper);
+  color: var(--ct-ink);
   font-family: var(--font-mono), 'Courier New', monospace;
 }
