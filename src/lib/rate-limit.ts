@@ -1,6 +1,15 @@
 import { NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { createClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
+
+// Service role client bypasses RLS — used for profile reads/writes in rate limiting
+function getAdminClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  );
+}
 
 const ANON_LIMIT = 6;
 const AUTH_DAILY_LIMIT = 50;
@@ -56,14 +65,29 @@ export async function checkRateLimit(
 
   if (user) {
     // Authenticated: check daily limit in profiles table
-    const { data: profile } = await supabase
+    // Use admin client to bypass RLS — the anon client may not have
+    // read access to the user's own profile row depending on policy config
+    const admin = getAdminClient();
+    const { data: profile } = await admin
       .from("profiles")
       .select("generation_count_today, generation_count_date")
       .eq("id", user.id)
       .single();
 
     if (!profile) {
-      return { allowed: false, remaining: 0, isAuthenticated: true, userId: user.id };
+      // Auto-create profile for authenticated users who don't have one yet
+      await admin.from("profiles").insert({
+        id: user.id,
+        generation_count_today: 0,
+        generation_count_date: new Date().toISOString().split("T")[0],
+        total_generations: 0,
+      });
+      return {
+        allowed: true,
+        remaining: AUTH_DAILY_LIMIT,
+        isAuthenticated: true,
+        userId: user.id,
+      };
     }
 
     const today = new Date().toISOString().split("T")[0];
@@ -72,7 +96,7 @@ export async function checkRateLimit(
     // Reset if new day
     if (profile.generation_count_date !== today) {
       countToday = 0;
-      await supabase
+      await admin
         .from("profiles")
         .update({ generation_count_today: 0, generation_count_date: today })
         .eq("id", user.id);
@@ -109,27 +133,10 @@ export async function incrementRateLimit(
   userId?: string
 ): Promise<void> {
   if (userId) {
-    const cookieStore = await cookies();
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() {
-            return cookieStore.getAll();
-          },
-          setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) =>
-              cookieStore.set(name, value, options)
-            );
-          },
-        },
-      }
-    );
-
+    const admin = getAdminClient();
     const today = new Date().toISOString().split("T")[0];
 
-    const { data: profile } = await supabase
+    const { data: profile } = await admin
       .from("profiles")
       .select("generation_count_today, generation_count_date, total_generations")
       .eq("id", userId)
@@ -142,7 +149,7 @@ export async function incrementRateLimit(
 
     const totalGen = (profile?.total_generations ?? 0) + 1;
 
-    await supabase
+    await admin
       .from("profiles")
       .update({
         generation_count_today: currentCount + 1,
