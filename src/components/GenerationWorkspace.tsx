@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { ComponentEditor, type ComponentEditorHandle } from "@/components/ComponentEditor";
-import { Turnstile } from "@/components/Turnstile";
+import { Turnstile, type TurnstileHandle } from "@/components/Turnstile";
 import { ServiceUnavailable } from "@/components/ServiceUnavailable";
 import { CONTENT_CATEGORIES, CATEGORY_KEYS } from "@/lib/component-types";
 import type { TipTapDoc } from "@/lib/tiptap-utils";
@@ -168,6 +168,7 @@ export function GenerationWorkspace({
 }: GenerationWorkspaceProps) {
   const [generating, setGenerating] = useState(false);
   const editorRef = useRef<ComponentEditorHandle>(null);
+  const turnstileRef = useRef<TurnstileHandle>(null);
   const turnstileTokenRef = useRef<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [softLimit, setSoftLimit] = useState(false);
@@ -245,6 +246,7 @@ export function GenerationWorkspace({
     if (!canGenerate) return;
     setGenerating(true);
     setError(null);
+    setSoftLimit(false);
 
     // Auto-save current RTE content as a version before regenerating
     let updatedHistory = history;
@@ -338,6 +340,7 @@ export function GenerationWorkspace({
       }
     } finally {
       setGenerating(false);
+      turnstileRef.current?.reset();
     }
   }
 
@@ -456,6 +459,7 @@ export function GenerationWorkspace({
   return (
     <div>
       <Turnstile
+        ref={turnstileRef}
         onToken={(token) => {
           turnstileTokenRef.current = token;
         }}

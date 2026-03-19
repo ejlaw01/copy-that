@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
   if (turnstile_token) {
     const valid = await verifyTurnstile(turnstile_token);
     if (!valid) {
-      return NextResponse.json({ error: "Bot verification failed" }, { status: 403 });
+      return NextResponse.json({ error: "Verification expired — please refresh the page and try again." }, { status: 403 });
     }
   }
 
