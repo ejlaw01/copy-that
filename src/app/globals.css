@@ -24,6 +24,44 @@
   --ct-invert-muted:  #9a9080;
   --ct-invert-rule:   #332e29;
 
+  /* --- Type Scale --- */
+  --text-xs:          11px;
+  --text-sm:          13px;
+  --text-base:        15px;
+  --text-lg:          18px;
+  --text-xl:          1.25rem;
+  --text-2xl:         1.75rem;
+  --text-3xl:         2.25rem;
+  --text-4xl:         3rem;
+
+  /* --- Spacing --- */
+  --space-1:          0.25rem;
+  --space-2:          0.5rem;
+  --space-3:          0.75rem;
+  --space-4:          1rem;
+  --space-6:          1.5rem;
+  --space-8:          2rem;
+  --space-12:         3rem;
+  --space-16:         4rem;
+
+  /* --- Radius --- */
+  --radius-sm:        2px;
+  --radius-md:        4px;
+  --radius-lg:        8px;
+
+  /* --- Shadows --- */
+  --shadow-sm:        0 1px 3px rgba(28,25,23,0.08);
+  --shadow-md:        0 4px 12px rgba(28,25,23,0.10);
+
+  /* --- Borders --- */
+  --border-hairline:  1px solid var(--ct-rule);
+  --border-accent:    3px solid var(--ct-ink);
+  --border-left-accent: 4px solid var(--ct-accent);
+
+  /* --- Letter Spacing --- */
+  --tracking-label:   0.12em;
+  --tracking-wide:    0.08em;
+
   /* --- Backward compatibility aliases --- */
   --background: var(--ct-paper);
   --foreground: var(--ct-ink);
