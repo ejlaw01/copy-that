@@ -7,11 +7,14 @@ import { GenerationWorkspace } from "@/components/GenerationWorkspace";
 import { SavePrompt } from "@/components/SavePrompt";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { supabase } from "@/lib/supabase/client";
+import { useHashRoute } from "@/lib/use-hash-route";
+import { slugify, uniqueSlug } from "@/lib/slugify";
 import {
   getSession,
   setSession,
   getActiveContext,
   setActiveContext,
+  setActiveBlockForContext,
   getGenerationCount,
   getSessionUserId,
   setSessionUserId,
@@ -51,6 +54,7 @@ const TONE_SUGGESTIONS = [
 function emptyForm(): Partial<BrandContext> {
   return {
     id: newContextId(),
+    slug: "",
     name: "",
     business_name: "",
     business_description: "",
@@ -66,12 +70,9 @@ function emptyForm(): Partial<BrandContext> {
   };
 }
 
-// "new" = the + New tab for creating a new profile
-type ActiveTab = string | "new";
-
 export default function Home() {
   const [contexts, setContexts] = useState<BrandContext[]>([]);
-  const [activeTab, setActiveTab] = useState<ActiveTab>("new");
+  const { route, navigate, replace } = useHashRoute();
   const [showSavePrompt, setShowSavePrompt] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
@@ -107,25 +108,39 @@ export default function Home() {
     setForm((prev) => ({ ...prev, ...fields }));
   }
 
+  // Resolve slug from hash to a full context ID. The hash stores
+  // human-readable slugs (e.g. `#/bit-lore`); we match them against
+  // the contexts array once here so all downstream code uses full IDs.
+  const activeTab = route.profileId === "new"
+    ? "new"
+    : route.profileId
+      ? (contexts.find((c) => c.slug === route.profileId)?.id ?? route.profileId)
+      : "new";
   const activeContext = activeTab !== "new"
     ? contexts.find((c) => c.id === activeTab) ?? null
     : null;
 
-  // Switch to a profile tab
-  function switchToProfile(id: string) {
-    const ctx = contexts.find((c) => c.id === id);
-    if (!ctx) return;
-    setActiveTab(id);
-    setActiveContext(id);
+  // Helper: apply panel state for a profile switch (form, brandOpen, editing).
+  // Extracted so both switchToProfile and bootstrap can reuse it.
+  function applyProfilePanel(ctx: BrandContext) {
     setForm(ctx);
     setBrandOpen(false);
     setEditing(false);
   }
 
+  // Switch to a profile tab
+  function switchToProfile(id: string) {
+    const ctx = contexts.find((c) => c.id === id);
+    if (!ctx) return;
+    navigate(ctx.slug);
+    setActiveContext(id);
+    applyProfilePanel(ctx);
+  }
+
   // Switch to the + New tab
   function switchToNew() {
     if (contexts.length >= MAX_PROFILES) return;
-    setActiveTab("new");
+    navigate("new");
     setForm(emptyForm());
     setBrandOpen(true);
     setEditing(true);
@@ -133,8 +148,6 @@ export default function Home() {
 
   // Delete a profile
   function handleDelete(id: string) {
-    // deleteBrandContextWithSync writes sessionStorage synchronously,
-    // then fires the Supabase DELETE in the background.
     const syncPromise = deleteBrandContextWithSync(id, isAuthenticated);
     if (isAuthenticated) withSync(() => syncPromise);
 
@@ -142,9 +155,15 @@ export default function Home() {
     setContexts(session.brand_contexts);
     if (activeTab === id) {
       if (session.brand_contexts.length > 0) {
-        switchToProfile(session.brand_contexts[0].id);
+        const target = session.brand_contexts[0];
+        navigate(target.slug);
+        setActiveContext(target.id);
+        applyProfilePanel(target);
       } else {
-        switchToNew();
+        navigate("new");
+        setForm(emptyForm());
+        setBrandOpen(true);
+        setEditing(true);
       }
     }
   }
@@ -153,11 +172,16 @@ export default function Home() {
   // The voice profile is created lazily on first generation via ensureContext().
   function handleSaveNew() {
     if (!form.name) return;
-    const ctx = form as BrandContext;
+    const slug = uniqueSlug(
+      slugify(form.name),
+      contexts.map((c) => c.slug),
+    );
+    const ctx = { ...form, slug } as BrandContext;
+    setForm(ctx);
     const syncPromise = saveBrandContextWithSync(ctx, isAuthenticated);
     if (isAuthenticated) withSync(() => syncPromise);
     setContexts((prev) => [...prev, ctx]);
-    setActiveTab(ctx.id);
+    navigate(ctx.slug);
     setActiveContext(ctx.id);
     setBrandOpen(false);
     setEditing(false);
@@ -176,19 +200,54 @@ export default function Home() {
     setEditing(false);
   }
 
-  // Helper: hydrate React state from a session-shaped object
+  // Helper: hydrate React state from a session-shaped object.
+  // Uses `replace` so the hash reflects the active profile without
+  // creating a spurious history entry.
   function hydrateFromSession(data: {
     brand_contexts: BrandContext[];
+    copy_blocks?: CopyBlock[];
     active_context_id: string | null;
   }) {
     if (data.brand_contexts.length === 0) return;
+
+    // Backfill slugs for legacy data (contexts without slugs)
+    const existingCtxSlugs: string[] = [];
+    for (const ctx of data.brand_contexts) {
+      if (!ctx.slug) {
+        ctx.slug = uniqueSlug(slugify(ctx.name), existingCtxSlugs);
+      }
+      existingCtxSlugs.push(ctx.slug);
+    }
+
+    // Backfill slugs for legacy blocks
+    if (data.copy_blocks) {
+      const existingBlockSlugs: string[] = [];
+      for (const block of data.copy_blocks) {
+        if (!block.slug) {
+          block.slug = uniqueSlug(
+            slugify(block.title || block.component_type),
+            existingBlockSlugs,
+          );
+        }
+        existingBlockSlugs.push(block.slug);
+      }
+    }
+
+    // Persist backfilled slugs to sessionStorage so subsequent lookups
+    // (e.g. onBlockChange resolving block slug from ID) see them.
+    // setSession preserves existing active_block_per_context entries
+    // and other session fields like generation_count and drafts.
+    setSession({
+      brand_contexts: data.brand_contexts,
+      copy_blocks: data.copy_blocks ?? getSession().copy_blocks,
+      active_context_id: data.active_context_id,
+    });
+
     setContexts(data.brand_contexts);
-    // Find the active context, falling back to the first profile if the
-    // stored ID is stale (e.g. deleted context, remapped IDs after migration).
     const active =
       data.brand_contexts.find((c) => c.id === data.active_context_id) ??
       data.brand_contexts[0];
-    setActiveTab(active.id);
+    replace(active.slug);
     setActiveContext(active.id);
     setForm(active);
     setBrandOpen(false);
@@ -322,11 +381,9 @@ export default function Home() {
           setUserEmail(null);
           isAuthenticatedRef.current = false;
           clearSessionUserId();
-          // Clear session data so stale brand contexts don't trigger
-          // re-migration on the next sign-in.
           setSession({ brand_contexts: [], copy_blocks: [], active_context_id: null });
           setContexts([]);
-          setActiveTab("new");
+          replace("new");
           setForm(emptyForm());
           setBrandOpen(true);
           setEditing(true);
@@ -339,6 +396,46 @@ export default function Home() {
       subscription.unsubscribe();
     };
   }, []);
+
+  // Bootstrap effect — runs once after loading completes.
+  // If the hash is empty (first visit or bookmark without hash), fall back
+  // to sessionStorage's active context. If the hash references a deleted
+  // profile, correct to first available or "new".
+  useEffect(() => {
+    if (isLoading) return;
+
+    if (route.profileId === null) {
+      // Empty hash — bootstrap from sessionStorage
+      const stored = getActiveContext();
+      if (stored && contexts.find((c) => c.id === stored.id)) {
+        replace(stored.slug);
+        applyProfilePanel(stored);
+      } else if (contexts.length > 0) {
+        replace(contexts[0].slug);
+        applyProfilePanel(contexts[0]);
+      }
+      // else: no contexts, stay on "new"
+    } else if (route.profileId === "new") {
+      // Explicit #/new — make sure form is in new-profile mode
+      setForm(emptyForm());
+      setBrandOpen(true);
+      setEditing(true);
+    } else {
+      // Hash has a profile ID — validate it resolved to a real context
+      if (activeContext) {
+        applyProfilePanel(activeContext);
+      } else if (contexts.length > 0) {
+        replace(contexts[0].slug);
+        applyProfilePanel(contexts[0]);
+      } else {
+        replace("new");
+        setForm(emptyForm());
+        setBrandOpen(true);
+        setEditing(true);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading]);
 
   const checkSavePrompt = useCallback(() => {
     if (isAuthenticatedRef.current) return;
@@ -402,6 +499,15 @@ export default function Home() {
     const data = await voiceRes.json();
     form.voice_profile = data.voice_profile;
 
+    // Generate slug if this context doesn't have one yet (new profile
+    // being auto-created during first generation via the +New form)
+    if (!form.slug) {
+      form.slug = uniqueSlug(
+        slugify(form.name!),
+        contexts.map((c) => c.slug),
+      );
+    }
+
     const ctx = form as BrandContext;
     const syncPromise = saveBrandContextWithSync(ctx, isAuthenticated);
     if (isAuthenticated) withSync(() => syncPromise);
@@ -415,7 +521,7 @@ export default function Home() {
       }
       return [...prev, ctx];
     });
-    setActiveTab(ctx.id);
+    navigate(ctx.slug);
     setActiveContext(ctx.id);
     setForm(ctx);
     setBrandOpen(false);
@@ -583,6 +689,19 @@ export default function Home() {
           {/* Generation workspace */}
           <GenerationWorkspace
             context={activeContext}
+            blockId={route.blockId}
+            onBlockChange={(blockId) => {
+              const profileSlug = activeContext?.slug ?? "new";
+              if (blockId === null) {
+                replace(profileSlug, "new");
+              } else {
+                // Look up block slug from session
+                const session = getSession();
+                const block = session.copy_blocks.find((b) => b.id === blockId);
+                replace(profileSlug, block?.slug ?? blockId);
+              }
+              if (activeContext) setActiveBlockForContext(activeContext.id, blockId);
+            }}
             form={form as BrandContext}
             canGenerate={canGenerate}
             ensureContext={ensureContext}
@@ -637,7 +756,7 @@ function BrandReadOnly({ context }: { context: BrandContext }) {
       {context.voice_profile && (
         <div className="border-t border-ct-rule pt-3 mt-3">
           <span className="text-[length:--text-xs] text-ct-muted">Generated Voice Profile</span>
-          <p className="text-[length:--text-xs] text-ct-muted mt-1 leading-relaxed">{context.voice_profile}</p>
+          <VoiceProfileDisplay text={context.voice_profile} />
         </div>
       )}
     </div>
@@ -651,6 +770,70 @@ function Row({ label, value }: { label: string; value: string }) {
       <span className="shrink-0 w-28 text-ct-muted">{label}</span>
       <span className="text-ct-ink">{value}</span>
     </div>
+  );
+}
+
+/**
+ * Renders the LLM-generated voice profile with basic formatting.
+ *
+ * The voice API returns a plain-text block that typically uses markdown-ish
+ * conventions: **Bold Section Headers**, lines starting with "- " for bullets,
+ * and blank lines between sections. Rather than pulling in a full markdown
+ * parser for this one spot, we do a lightweight transform:
+ *
+ * 1. Split on newlines.
+ * 2. Lines starting with "- " become <li> items grouped into <ul>s.
+ * 3. Inline **bold** markers become <strong> tags.
+ * 4. Everything else becomes a <p>.
+ *
+ * This is a presentational component — no state, no effects.
+ */
+function VoiceProfileDisplay({ text }: { text: string }) {
+  const lines = text.split("\n");
+  const elements: React.ReactNode[] = [];
+  let bulletBuffer: string[] = [];
+  let key = 0;
+
+  function flushBullets() {
+    if (bulletBuffer.length === 0) return;
+    elements.push(
+      <ul key={key++} className="list-disc list-outside pl-4 space-y-0.5">
+        {bulletBuffer.map((b, i) => (
+          <li key={i}>{formatBold(b)}</li>
+        ))}
+      </ul>
+    );
+    bulletBuffer = [];
+  }
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      flushBullets();
+      continue;
+    }
+    if (/^[-•]\s/.test(trimmed)) {
+      bulletBuffer.push(trimmed.replace(/^[-•]\s+/, ""));
+    } else {
+      flushBullets();
+      elements.push(<p key={key++}>{formatBold(trimmed)}</p>);
+    }
+  }
+  flushBullets();
+
+  return (
+    <div className="text-[length:--text-xs] text-ct-muted mt-1 leading-relaxed space-y-2">
+      {elements}
+    </div>
+  );
+}
+
+/** Replace **bold** markers with <strong> tags. */
+function formatBold(text: string): React.ReactNode {
+  const parts = text.split(/\*\*(.+?)\*\*/g);
+  if (parts.length === 1) return text;
+  return parts.map((part, i) =>
+    i % 2 === 1 ? <strong key={i} className="font-semibold text-ct-ink">{part}</strong> : part
   );
 }
 

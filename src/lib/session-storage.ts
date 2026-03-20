@@ -1,5 +1,6 @@
 export interface BrandContext {
   id: string;
+  slug: string;    // URL slug, set at creation, immutable across renames
   name: string;
   business_name: string;
   business_description: string;
@@ -16,6 +17,7 @@ export interface BrandContext {
 
 export interface CopyBlock {
   id: string;
+  slug: string;    // URL slug, set at creation, shared across versions
   brand_context_id: string;
   component_type: string;
   title?: string;

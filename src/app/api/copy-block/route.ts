@@ -55,6 +55,7 @@ export async function PUT(req: NextRequest) {
       min_words: block.min_words ?? null,
       version: block.version ?? 1,
       created_at: block.created_at,
+      slug: block.slug ?? "",
     },
     { onConflict: "id" },
   );

@@ -43,6 +43,7 @@ export async function PUT(req: NextRequest) {
       competitor_url: ctx.competitor_url ?? "",
       competitor_analysis: ctx.competitor_analysis ?? "",
       voice_profile: ctx.voice_profile ?? "",
+      slug: ctx.slug ?? "",
     },
     { onConflict: "id" },
   );

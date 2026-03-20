@@ -6,6 +6,7 @@ import { Turnstile, type TurnstileHandle } from "@/components/Turnstile";
 import { ServiceUnavailable } from "@/components/ServiceUnavailable";
 import { AnimatedEllipsis } from "@/components/AnimatedEllipsis";
 import { CONTENT_CATEGORIES, CATEGORY_KEYS } from "@/lib/component-types";
+import { slugify, uniqueSlug } from "@/lib/slugify";
 import type { TipTapDoc } from "@/lib/tiptap-utils";
 import {
   saveCopyBlock,
@@ -156,6 +157,8 @@ function diffWords(oldText: string, newText: string): DiffSpan[] {
 
 interface GenerationWorkspaceProps {
   context: BrandContext | null;
+  blockId: string | null;
+  onBlockChange: (blockId: string | null) => void;
   form: BrandContext;
   canGenerate: boolean;
   ensureContext: () => Promise<BrandContext | null>;
@@ -172,6 +175,8 @@ interface AiNotes {
 
 export function GenerationWorkspace({
   context,
+  blockId,
+  onBlockChange,
   form,
   canGenerate,
   ensureContext,
@@ -201,8 +206,10 @@ export function GenerationWorkspace({
     });
   }
 
+  // All active-block changes go through onBlockChange, which updates the
+  // hash and syncs to sessionStorage in the parent.
   function setActiveBlock(id: string | null) {
-    if (context) setActiveBlockForContext(context.id, id);
+    onBlockChange(id);
   }
 
   function syncDeleteBlock(id: string) {
@@ -219,6 +226,18 @@ export function GenerationWorkspace({
     const session = getSession();
     return session.copy_blocks.filter((b) => b.brand_context_id === context.id);
   });
+
+  // Resolve the slug from the hash to a full block ID against current history.
+  // "new" is treated as null (show +New form). Falls back to startsWith for
+  // legacy blocks that may still be referenced by short UUID prefixes.
+  const resolvedBlockId = blockId === "new"
+    ? null
+    : blockId
+      ? (history.find((b) => b.slug === blockId)?.id
+        ?? history.find((b) => b.id.startsWith(blockId))?.id
+        ?? blockId)
+      : null;
+
   const [currentBlock, setCurrentBlock] = useState<CopyBlock | null>(() => {
     if (!context) return null;
     return getActiveBlockForContext(context.id);
@@ -268,10 +287,9 @@ export function GenerationWorkspace({
     new Set(),
   );
 
-  // Save the draft on page unload so "+New" form state survives refresh.
-  // Event handlers capture stale closures, so we use a ref that always
-  // points to the latest draft values. This is the "ref-to-latest" pattern —
-  // the ref is mutable and updated on every render, so the beforeunload
+  // Save the draft on page unload so "+New" form values survive refresh.
+  // Navigation state is now in the URL hash, but draft text still needs
+  // persisting to sessionStorage. We use a ref-to-latest pattern so the
   // handler reads current values without re-registering the listener.
   const draftRef = useRef({ context, currentBlock, category, userPrompt, maxWords, minWords });
   draftRef.current = { context, currentBlock, category, userPrompt, maxWords, minWords };
@@ -335,19 +353,33 @@ export function GenerationWorkspace({
     );
     setHistory(blocks);
 
-    // Restore the last active block for this profile.
-    // getActiveBlockForContext returns null both when the sentinel "__new__"
-    // is stored (user chose +New) and when no block exists — either way
-    // we fall through to the draft-restore branch.
-    const block = getActiveBlockForContext(context.id);
-    if (block && block.brand_context_id === context.id) {
+    // Resolve which block to show. The hash's blockId (slug) takes
+    // priority; if null/new, fall back to sessionStorage, then +New.
+    let resolvedBlock: CopyBlock | null = null;
+    if (blockId && blockId !== "new") {
+      resolvedBlock = blocks.find((b) => b.slug === blockId)
+        ?? blocks.find((b) => b.id.startsWith(blockId))
+        ?? null;
+    }
+    if (!resolvedBlock && !blockId) {
+      // No block in hash — check sessionStorage fallback
+      resolvedBlock = getActiveBlockForContext(context.id);
+      if (resolvedBlock && resolvedBlock.brand_context_id === context.id) {
+        // Sync hash to match the resolved block
+        onBlockChange(resolvedBlock.id);
+      } else {
+        resolvedBlock = null;
+      }
+    }
+
+    if (resolvedBlock) {
       ignoreNextChangeRef.current = true;
-      setCurrentBlock(block);
-      setCategory(block.component_type);
-      setUserPrompt(block.user_prompt ?? "");
-      setMaxWords(block.max_words);
-      setMinWords(block.min_words);
-      setAiNotes((block.ai_notes as AiNotes | null) ?? null);
+      setCurrentBlock(resolvedBlock);
+      setCategory(resolvedBlock.component_type);
+      setUserPrompt(resolvedBlock.user_prompt ?? "");
+      setMaxWords(resolvedBlock.max_words);
+      setMinWords(resolvedBlock.min_words);
+      setAiNotes((resolvedBlock.ai_notes as AiNotes | null) ?? null);
     } else {
       setCurrentBlock(null);
       setAiNotes(null);
@@ -358,9 +390,59 @@ export function GenerationWorkspace({
       setUserPrompt(draft?.user_prompt ?? "");
       setMaxWords(draft?.max_words ?? CONTENT_CATEGORIES[draftCat].default_max_words);
       setMinWords(draft?.min_words ?? CONTENT_CATEGORIES[draftCat].default_min_words);
+      onBlockChange(null);
     }
     setCanSave(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [context]);
+
+  // Block-change effect: responds to hash changes from browser back/forward.
+  // The context-switch effect handles initial load; this handles in-profile
+  // navigation where the context stays the same but the block segment changes.
+  useEffect(() => {
+    if (!context) return;
+    const currentId = currentBlock?.id ?? null;
+    if (resolvedBlockId === currentId) return;
+
+    if (resolvedBlockId === null) {
+      // Navigated back to +New form
+      saveDraftIfNeeded();
+      setCurrentBlock(null);
+      setAiNotes(null);
+      const draft = getDraft(context.id);
+      const draftCat = draft?.category ?? "general";
+      setCategory(draftCat);
+      setUserPrompt(draft?.user_prompt ?? "");
+      setMaxWords(draft?.max_words ?? CONTENT_CATEGORIES[draftCat].default_max_words);
+      setMinWords(draft?.min_words ?? CONTENT_CATEGORIES[draftCat].default_min_words);
+      setFeedback("");
+      setCanSave(false);
+      setShowVersions(false);
+      setConstraintWarning(null);
+    } else {
+      const block = history.find((b) => b.id === resolvedBlockId);
+      if (block) {
+        loadBlockInternal(block);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resolvedBlockId]);
+
+  // Internal block loader — sets all block-related state without triggering
+  // onBlockChange (which would create a circular update). Used by the
+  // blockId-change effect for back/forward navigation.
+  function loadBlockInternal(block: CopyBlock, { markDirty = false } = {}) {
+    if (!markDirty) ignoreNextChangeRef.current = true;
+    setCurrentBlock(block);
+    setCategory(block.component_type);
+    setUserPrompt(block.user_prompt ?? "");
+    setMaxWords(block.max_words);
+    setMinWords(block.min_words);
+    setAiNotes(block.ai_notes as AiNotes | null);
+    setFeedback("");
+    setCanSave(markDirty);
+    setConstraintWarning(null);
+  }
 
   async function handleGenerate() {
     const isRefining = !!currentBlock && !!feedback.trim();
@@ -371,12 +453,15 @@ export function GenerationWorkspace({
     setSoftLimit(false);
     setConstraintWarning(null);
 
-    // Auto-save current RTE content as a version before regenerating
+    // Auto-save current RTE content as a version before regenerating.
+    // The snapshot inherits the slug from the current block so all
+    // versions of the same document share a single URL slug.
     let updatedHistory = history;
     if (isRefining && currentBlock) {
       const snapshot: CopyBlock = {
         ...currentBlock,
         id: crypto.randomUUID(),
+        slug: currentBlock.slug,
         version: (currentBlock.version ?? 1) + 1,
         created_at: new Date().toISOString(),
       };
@@ -443,8 +528,17 @@ export function GenerationWorkspace({
         setConstraintWarning(data.constraint_warning);
       }
 
+      // Generate a URL slug from the LLM-provided title (or category fallback).
+      // Deduplicate against all blocks in the current history so each
+      // document has a unique slug within the profile.
+      const blockSlug = uniqueSlug(
+        slugify(data.title || category),
+        updatedHistory.map((b) => b.slug).filter(Boolean),
+      );
+
       const block: CopyBlock = {
         id: crypto.randomUUID(),
+        slug: blockSlug,
         brand_context_id: ctx.id,
         component_type: category,
         title: data.title || "",
@@ -465,6 +559,7 @@ export function GenerationWorkspace({
       ignoreNextChangeRef.current = true;
       setCurrentBlock(block);
       setAiNotes(data.ai_notes);
+      setUserPrompt("");
       setFeedback("");
       setCanSave(false);
       setHistory((prev) => [block, ...prev]);
@@ -509,16 +604,7 @@ export function GenerationWorkspace({
   function loadBlock(block: CopyBlock, { markDirty = false } = {}) {
     saveDraftIfNeeded();
     setActiveBlock(block.id);
-    if (!markDirty) ignoreNextChangeRef.current = true;
-    setCurrentBlock(block);
-    setCategory(block.component_type);
-    setUserPrompt(block.user_prompt ?? "");
-    setMaxWords(block.max_words);
-    setMinWords(block.min_words);
-    setAiNotes(block.ai_notes as AiNotes | null);
-    setFeedback("");
-    setCanSave(markDirty);
-    setConstraintWarning(null);
+    loadBlockInternal(block, { markDirty });
   }
 
   async function handleCopy() {
@@ -551,6 +637,7 @@ export function GenerationWorkspace({
     const newBlock: CopyBlock = {
       ...currentBlock,
       id: crypto.randomUUID(),
+      slug: currentBlock.slug,  // versions share the same URL slug
       ai_notes: null,
       version: (currentBlock.version ?? 1) + 1,
       created_at: new Date().toISOString(),
@@ -653,28 +740,26 @@ export function GenerationWorkspace({
         {documentGroups.map((group) => {
           const isActive = activeDocKey === group.key;
           return (
-            <span
+            <button
               key={group.key}
-              className={`shrink-0 rounded-full py-1.5 pl-4 pr-1.5 text-xs transition-colors inline-flex items-center gap-1.5 ${
+              onClick={() => {
+                loadBlock(group.latest);
+                setShowVersions(false);
+              }}
+              className={`shrink-0 rounded-full py-1.5 pl-4 pr-1.5 text-xs transition-colors inline-flex items-center gap-1.5 cursor-pointer ${
                 isActive
                   ? "bg-ct-ink text-ct-paper"
                   : "bg-ct-cream text-ct-muted hover:bg-ct-rule hover:text-ct-ink"
               }`}
             >
-              <button
-                onClick={() => {
-                  loadBlock(group.latest);
-                  setShowVersions(false);
-                }}
-                className="cursor-pointer"
-              >
+              <span>
                 <span className="font-medium">{group.title || group.label}</span>
                 {group.title && (
                   <span className={isActive ? "opacity-60" : "text-ct-rule"}>
                     {" "}— {group.label}
                   </span>
                 )}
-              </button>
+              </span>
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -710,7 +795,7 @@ export function GenerationWorkspace({
                   <path d="M2 2l6 6M8 2l-6 6" />
                 </svg>
               </button>
-            </span>
+            </button>
           );
         })}
         <button

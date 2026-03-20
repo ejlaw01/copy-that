@@ -51,6 +51,7 @@ export async function POST(req: NextRequest) {
         competitor_url: ctx.competitor_url,
         competitor_analysis: ctx.competitor_analysis,
         voice_profile: ctx.voice_profile,
+        slug: ctx.slug ?? "",
       })
       .select("id")
       .single();
@@ -68,7 +69,7 @@ export async function POST(req: NextRequest) {
   // Migrate copy blocks
   if (Array.isArray(copy_blocks) && copy_blocks.length > 0) {
     const blocks = copy_blocks
-      .map((block: { brand_context_id: string; component_type: string; title?: string; user_prompt?: string; content: unknown; ai_notes: unknown; version: number }) => {
+      .map((block: { brand_context_id: string; component_type: string; title?: string; user_prompt?: string; content: unknown; ai_notes: unknown; version: number; slug?: string }) => {
         const newContextId = idMap.get(block.brand_context_id);
         if (!newContextId) return null;
         return {
@@ -79,6 +80,7 @@ export async function POST(req: NextRequest) {
           content: block.content,
           ai_notes: block.ai_notes,
           version: block.version,
+          slug: block.slug ?? "",
         };
       })
       .filter(Boolean);

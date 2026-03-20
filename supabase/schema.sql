@@ -50,9 +50,13 @@ create table brand_contexts (
   competitor_url text,
   competitor_analysis text,
   voice_profile text,
+  slug text default '',
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
+
+-- Migration for existing databases:
+-- ALTER TABLE brand_contexts ADD COLUMN slug text DEFAULT '';
 
 alter table brand_contexts enable row level security;
 
@@ -69,9 +73,13 @@ create table copy_blocks (
   content jsonb not null,
   ai_notes jsonb,
   version integer default 1,
+  slug text default '',
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
+
+-- Migration for existing databases:
+-- ALTER TABLE copy_blocks ADD COLUMN slug text DEFAULT '';
 
 alter table copy_blocks enable row level security;
 

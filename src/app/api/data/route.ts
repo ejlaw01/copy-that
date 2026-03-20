@@ -68,6 +68,7 @@ export async function GET() {
   // Map Supabase rows → client interfaces (drop server-only fields)
   const mappedContexts = (contexts ?? []).map((c) => ({
     id: c.id,
+    slug: (c.slug as string) ?? "",
     name: c.name,
     business_name: c.business_name ?? "",
     business_description: c.business_description ?? "",
@@ -84,6 +85,7 @@ export async function GET() {
 
   const mappedBlocks = copyBlocks.map((b) => ({
     id: b.id as string,
+    slug: (b.slug as string) ?? "",
     brand_context_id: b.brand_context_id as string,
     component_type: b.component_type as string,
     title: (b.title as string) ?? "",
