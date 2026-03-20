@@ -183,15 +183,16 @@ export default function Home() {
   }) {
     if (data.brand_contexts.length === 0) return;
     setContexts(data.brand_contexts);
-    const active = data.active_context_id
-      ? data.brand_contexts.find((c) => c.id === data.active_context_id)
-      : data.brand_contexts[0];
-    if (active) {
-      setActiveTab(active.id);
-      setForm(active);
-      setBrandOpen(false);
-      setEditing(false);
-    }
+    // Find the active context, falling back to the first profile if the
+    // stored ID is stale (e.g. deleted context, remapped IDs after migration).
+    const active =
+      data.brand_contexts.find((c) => c.id === data.active_context_id) ??
+      data.brand_contexts[0];
+    setActiveTab(active.id);
+    setActiveContext(active.id);
+    setForm(active);
+    setBrandOpen(false);
+    setEditing(false);
     setSessionIndicator(true);
   }
 
@@ -248,15 +249,7 @@ export default function Home() {
         // Anonymous: restore from sessionStorage (existing behavior)
         const session = getSession();
         if (session.brand_contexts.length > 0) {
-          setContexts(session.brand_contexts);
-          const ctx = getActiveContext();
-          if (ctx) {
-            setActiveTab(ctx.id);
-            setForm(ctx);
-            setBrandOpen(false);
-            setEditing(false);
-          }
-          setSessionIndicator(true);
+          hydrateFromSession(session);
         }
       }
 

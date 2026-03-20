@@ -24,6 +24,8 @@ export interface CopyBlock {
   content: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ai_notes: any;
+  max_words?: number;
+  min_words?: number;
   version: number;
   created_at: string;
 }
@@ -31,7 +33,16 @@ export interface CopyBlock {
 export interface DraftPrompt {
   category: string;
   user_prompt: string;
+  max_words?: number;
+  min_words?: number;
 }
+
+/**
+ * Sentinel stored in active_block_per_context when the user is on the +New
+ * form. Treated the same as any other "active block" ID — setActiveBlockForContext
+ * writes it, getActiveBlockForContext recognises it and returns null (no block).
+ */
+export const NEW_BLOCK_SENTINEL = "__new__";
 
 export interface SessionData {
   brand_contexts: BrandContext[];
@@ -136,12 +147,9 @@ export function getDraft(contextId: string): DraftPrompt | null {
 export function setActiveBlockForContext(contextId: string, blockId: string | null): void {
   const session = getSession();
   if (!session.active_block_per_context) session.active_block_per_context = {};
-  if (blockId) {
-    session.active_block_per_context[contextId] = blockId;
-  } else {
-    delete session.active_block_per_context[contextId];
-  }
-  // Also update the global active_block_id for backward compat
+  // null → user chose "+New"; store the sentinel so we can distinguish
+  // "explicitly on +New" from "never tracked" (missing key).
+  session.active_block_per_context[contextId] = blockId ?? NEW_BLOCK_SENTINEL;
   session.active_block_id = blockId;
   saveSession(session);
 }
@@ -149,7 +157,7 @@ export function setActiveBlockForContext(contextId: string, blockId: string | nu
 export function getActiveBlockForContext(contextId: string): CopyBlock | null {
   const session = getSession();
   const blockId = session.active_block_per_context?.[contextId];
-  if (!blockId) return null;
+  if (!blockId || blockId === NEW_BLOCK_SENTINEL) return null;
   return session.copy_blocks.find((b) => b.id === blockId) ?? null;
 }
 
@@ -191,14 +199,27 @@ export function setSession(data: {
   session.copy_blocks = data.copy_blocks;
   session.active_context_id = data.active_context_id;
 
-  // Auto-select the most recent block for the active context.
-  // copy_blocks arrive sorted by created_at desc from the API,
-  // so the first match is the most recently created/edited block.
-  if (data.active_context_id) {
+  // Auto-select the most recent block for every context that doesn't
+  // already have a tracked selection. copy_blocks arrive sorted by
+  // created_at desc from the API, so the first match is the most recent.
+  //
+  // We skip contexts that already have an entry — including the
+  // NEW_BLOCK_SENTINEL — so a user's "+New" choice from the same tab
+  // survives a setSession call (e.g. after re-auth).
+  if (!session.active_block_per_context) session.active_block_per_context = {};
+  for (const ctx of data.brand_contexts) {
+    if (ctx.id in session.active_block_per_context) continue;
     const latestBlock = data.copy_blocks.find(
-      (b) => b.brand_context_id === data.active_context_id,
+      (b) => b.brand_context_id === ctx.id,
     );
-    session.active_block_id = latestBlock?.id ?? null;
+    if (latestBlock) {
+      session.active_block_per_context[ctx.id] = latestBlock.id;
+    }
+  }
+
+  if (data.active_context_id) {
+    session.active_block_id =
+      session.active_block_per_context[data.active_context_id] ?? null;
   } else {
     session.active_block_id = null;
   }

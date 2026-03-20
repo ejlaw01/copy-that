@@ -243,12 +243,49 @@ export function GenerationWorkspace({
     return (block?.ai_notes as AiNotes | null) ?? null;
   });
 
+  // Constraint state — pre-populated from category defaults, user-adjustable.
+  const [maxWords, setMaxWords] = useState<number | undefined>(() => {
+    if (!context) return CONTENT_CATEGORIES["general"].default_max_words;
+    const block = getActiveBlockForContext(context.id);
+    if (block) return block.max_words;
+    const draft = getDraft(context.id);
+    return draft?.max_words ?? CONTENT_CATEGORIES[draft?.category ?? "general"].default_max_words;
+  });
+  const [minWords, setMinWords] = useState<number | undefined>(() => {
+    if (!context) return CONTENT_CATEGORIES["general"].default_min_words;
+    const block = getActiveBlockForContext(context.id);
+    if (block) return block.min_words;
+    const draft = getDraft(context.id);
+    return draft?.min_words ?? CONTENT_CATEGORIES[draft?.category ?? "general"].default_min_words;
+  });
+  const [showConstraints, setShowConstraints] = useState(false);
+  const [constraintWarning, setConstraintWarning] = useState<string | null>(null);
+
   const [feedback, setFeedback] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
   const [showVersions, setShowVersions] = useState(false);
   const [expandedVersions, setExpandedVersions] = useState<Set<string>>(
     new Set(),
   );
+
+  // Save the draft on page unload so "+New" form state survives refresh.
+  // Event handlers capture stale closures, so we use a ref that always
+  // points to the latest draft values. This is the "ref-to-latest" pattern —
+  // the ref is mutable and updated on every render, so the beforeunload
+  // handler reads current values without re-registering the listener.
+  const draftRef = useRef({ context, currentBlock, category, userPrompt, maxWords, minWords });
+  draftRef.current = { context, currentBlock, category, userPrompt, maxWords, minWords };
+
+  useEffect(() => {
+    function handleBeforeUnload() {
+      const { context: ctx, currentBlock: block, category: cat, userPrompt: prompt, maxWords: max, minWords: min } = draftRef.current;
+      if (ctx && !block) {
+        saveDraft(ctx.id, { category: cat, user_prompt: prompt, max_words: max, min_words: min });
+      }
+    }
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, []);
 
   const documentGroups = useMemo(
     () => groupBlocksIntoDocuments(history),
@@ -272,7 +309,7 @@ export function GenerationWorkspace({
     // Save draft from the previous context before switching
     const prevId = restoredContextRef.current;
     if (prevId && !currentBlock) {
-      saveDraft(prevId, { category, user_prompt: userPrompt });
+      saveDraft(prevId, { category, user_prompt: userPrompt, max_words: maxWords, min_words: minWords });
     }
 
     if (!context) {
@@ -281,10 +318,13 @@ export function GenerationWorkspace({
       setCurrentBlock(null);
       setCategory("general");
       setUserPrompt("");
+      setMaxWords(CONTENT_CATEGORIES["general"].default_max_words);
+      setMinWords(CONTENT_CATEGORIES["general"].default_min_words);
       setAiNotes(null);
       setFeedback("");
       setCanSave(false);
       setShowVersions(false);
+      setConstraintWarning(null);
       return;
     }
     if (restoredContextRef.current === context.id) return;
@@ -295,21 +335,29 @@ export function GenerationWorkspace({
     );
     setHistory(blocks);
 
-    // Restore the last active block for this profile
+    // Restore the last active block for this profile.
+    // getActiveBlockForContext returns null both when the sentinel "__new__"
+    // is stored (user chose +New) and when no block exists — either way
+    // we fall through to the draft-restore branch.
     const block = getActiveBlockForContext(context.id);
     if (block && block.brand_context_id === context.id) {
       ignoreNextChangeRef.current = true;
       setCurrentBlock(block);
       setCategory(block.component_type);
       setUserPrompt(block.user_prompt ?? "");
+      setMaxWords(block.max_words);
+      setMinWords(block.min_words);
       setAiNotes((block.ai_notes as AiNotes | null) ?? null);
     } else {
       setCurrentBlock(null);
       setAiNotes(null);
       // Restore draft prompt for this profile's +New form
       const draft = getDraft(context.id);
-      setCategory(draft?.category ?? "general");
+      const draftCat = draft?.category ?? "general";
+      setCategory(draftCat);
       setUserPrompt(draft?.user_prompt ?? "");
+      setMaxWords(draft?.max_words ?? CONTENT_CATEGORIES[draftCat].default_max_words);
+      setMinWords(draft?.min_words ?? CONTENT_CATEGORIES[draftCat].default_min_words);
     }
     setCanSave(false);
   }, [context]);
@@ -321,6 +369,7 @@ export function GenerationWorkspace({
     setGenerating(true);
     setError(null);
     setSoftLimit(false);
+    setConstraintWarning(null);
 
     // Auto-save current RTE content as a version before regenerating
     let updatedHistory = history;
@@ -356,6 +405,9 @@ export function GenerationWorkspace({
           business_name: ctx.business_name,
           source_content: ctx.source_content,
           turnstile_token: turnstileTokenRef.current,
+          // Word constraints — server converts to chars for validation
+          ...(maxWords !== undefined && { max_words: maxWords }),
+          ...(minWords !== undefined && { min_words: minWords }),
           // Refinement fields — server constructs the prompt from these
           ...(isRefining && {
             feedback: feedback.trim(),
@@ -387,6 +439,10 @@ export function GenerationWorkspace({
       const data = await res.json();
       incrementGenerationCount();
 
+      if (data.constraint_warning) {
+        setConstraintWarning(data.constraint_warning);
+      }
+
       const block: CopyBlock = {
         id: crypto.randomUUID(),
         brand_context_id: ctx.id,
@@ -395,6 +451,10 @@ export function GenerationWorkspace({
         user_prompt: userPrompt,
         content: data.content,
         ai_notes: data.ai_notes,
+        // Persist the constraints the user asked for so the editor can
+        // show them and future re-validation uses the same values.
+        ...(maxWords !== undefined && { max_words: maxWords }),
+        ...(minWords !== undefined && { min_words: minWords }),
         version: 1,
         created_at: new Date().toISOString(),
       };
@@ -442,7 +502,7 @@ export function GenerationWorkspace({
 
   function saveDraftIfNeeded() {
     if (!currentBlock && context) {
-      saveDraft(context.id, { category, user_prompt: userPrompt });
+      saveDraft(context.id, { category, user_prompt: userPrompt, max_words: maxWords, min_words: minWords });
     }
   }
 
@@ -453,9 +513,12 @@ export function GenerationWorkspace({
     setCurrentBlock(block);
     setCategory(block.component_type);
     setUserPrompt(block.user_prompt ?? "");
+    setMaxWords(block.max_words);
+    setMinWords(block.min_words);
     setAiNotes(block.ai_notes as AiNotes | null);
     setFeedback("");
     setCanSave(markDirty);
+    setConstraintWarning(null);
   }
 
   async function handleCopy() {
@@ -652,15 +715,28 @@ export function GenerationWorkspace({
         })}
         <button
           onClick={() => {
+            // setActiveBlock(null) writes the "__new__" sentinel to
+            // sessionStorage synchronously — this is what survives refresh.
+            // We also save the draft eagerly so the form values are current
+            // even if beforeunload fires before React re-renders the ref.
             setCurrentBlock(null);
             setActiveBlock(null);
             const draft = context ? getDraft(context.id) : null;
-            setCategory(draft?.category ?? "general");
+            const draftCat = draft?.category ?? "general";
+            const draftMaxW = draft?.max_words ?? CONTENT_CATEGORIES[draftCat].default_max_words;
+            const draftMinW = draft?.min_words ?? CONTENT_CATEGORIES[draftCat].default_min_words;
+            if (context) {
+              saveDraft(context.id, { category: draftCat, user_prompt: draft?.user_prompt ?? "", max_words: draftMaxW, min_words: draftMinW });
+            }
+            setCategory(draftCat);
             setUserPrompt(draft?.user_prompt ?? "");
+            setMaxWords(draftMaxW);
+            setMinWords(draftMinW);
             setFeedback("");
             setAiNotes(null);
             setCanSave(false);
             setShowVersions(false);
+            setConstraintWarning(null);
           }}
           className={`shrink-0 rounded-full px-4 py-1.5 text-xs font-ui transition-colors ${
             !currentBlock
@@ -681,7 +757,14 @@ export function GenerationWorkspace({
             </label>
             <select
               value={category}
-              onChange={(e) => setCategory(e.target.value)}
+              onChange={(e) => {
+                const newCat = e.target.value;
+                setCategory(newCat);
+                // Sync constraint defaults when category changes
+                const catInfo = CONTENT_CATEGORIES[newCat];
+                setMaxWords(catInfo.default_max_words);
+                setMinWords(catInfo.default_min_words);
+              }}
               className="ct-input"
             >
               {CATEGORY_KEYS.map((key) => (
@@ -693,6 +776,44 @@ export function GenerationWorkspace({
             <p className="mt-1.5 text-xs text-ct-muted">
               {CONTENT_CATEGORIES[category].guidance}
             </p>
+
+            {/* Constraints — collapsible section for word limits */}
+            <button
+              onClick={() => setShowConstraints((prev) => !prev)}
+              className="mt-3 text-xs text-ct-muted hover:text-ct-ink transition-colors"
+            >
+              Constraints {showConstraints ? "▼" : "▶"}
+            </button>
+            {showConstraints && (
+              <div className="mt-2 flex items-center gap-4">
+                <label className="flex items-center gap-1.5 text-xs text-ct-muted">
+                  Max words
+                  <input
+                    id="max-words"
+                    name="max-words"
+                    type="number"
+                    min={1}
+                    value={maxWords ?? ""}
+                    onChange={(e) => setMaxWords(e.target.value ? Number(e.target.value) : undefined)}
+                    className="ct-input w-20 py-1 text-xs"
+                    placeholder="—"
+                  />
+                </label>
+                <label className="flex items-center gap-1.5 text-xs text-ct-muted">
+                  Min words
+                  <input
+                    id="min-words"
+                    name="min-words"
+                    type="number"
+                    min={1}
+                    value={minWords ?? ""}
+                    onChange={(e) => setMinWords(e.target.value ? Number(e.target.value) : undefined)}
+                    className="ct-input w-20 py-1 text-xs"
+                    placeholder="—"
+                  />
+                </label>
+              </div>
+            )}
           </div>
         )}
 
@@ -744,7 +865,22 @@ export function GenerationWorkspace({
             ref={editorRef}
             content={currentBlock.content as TipTapDoc}
             onChange={handleContentChange}
+            maxWords={currentBlock.max_words}
+            minWords={currentBlock.min_words}
+            maxChars={currentBlock.max_words ? currentBlock.max_words * 6 : undefined}
           />
+
+          {constraintWarning && (
+            <div className="flex items-center justify-between rounded-[--radius-md] border border-ct-highlight/30 bg-ct-highlight/10 px-3 py-2 text-xs text-ct-highlight">
+              <span>{constraintWarning}</span>
+              <button
+                onClick={() => setConstraintWarning(null)}
+                className="ml-2 text-ct-highlight/60 hover:text-ct-highlight transition-colors"
+              >
+                dismiss
+              </button>
+            </div>
+          )}
 
           {/* Actions */}
           <div className="flex items-center gap-2">

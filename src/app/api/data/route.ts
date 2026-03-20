@@ -90,6 +90,9 @@ export async function GET() {
     user_prompt: (b.user_prompt as string) ?? "",
     content: b.content,
     ai_notes: b.ai_notes,
+    // Constraint fields — may be undefined for blocks created before this feature
+    ...(b.max_words != null && { max_words: b.max_words as number }),
+    ...(b.min_words != null && { min_words: b.min_words as number }),
     version: (b.version as number) ?? 1,
     created_at: b.created_at as string,
   }));

@@ -97,12 +97,14 @@ interface ComponentEditorProps {
   content: TipTapDoc;
   maxChars?: number;
   minChars?: number;
+  maxWords?: number;
+  minWords?: number;
   onChange: (json: TipTapDoc) => void;
   singleLine?: boolean;
 }
 
 export const ComponentEditor = forwardRef<ComponentEditorHandle, ComponentEditorProps>(
-  function ComponentEditor({ content, maxChars, minChars, onChange, singleLine }, ref) {
+  function ComponentEditor({ content, maxChars, minChars, maxWords, minWords, onChange, singleLine }, ref) {
   const [showSource, setShowSource] = useState(false);
   const [sourceHtml, setSourceHtml] = useState("");
 
@@ -169,14 +171,29 @@ export const ComponentEditor = forwardRef<ComponentEditorHandle, ComponentEditor
 
   const charCount = editor?.storage.characterCount.characters() ?? 0;
 
-  const charColor =
-    maxChars && charCount > maxChars
+  // Word count: split editor plain text on whitespace, filter empties.
+  // TipTap's characterCount extension tracks chars but not words in all
+  // versions, so we derive it from the text content directly.
+  const wordCount = editor
+    ? editor.getText().split(/\s+/).filter(Boolean).length
+    : 0;
+
+  // Color coding uses word count when word limits are set, falls back to
+  // char-based limits for backward compat (though we no longer display chars).
+  const countColor =
+    maxWords && wordCount > maxWords
       ? "text-ct-strike"
-      : maxChars && charCount > maxChars * 0.9
+      : maxWords && wordCount > maxWords * 0.9
         ? "text-ct-highlight"
-        : minChars && charCount < minChars
+        : minWords && wordCount < minWords
           ? "text-ct-highlight"
-          : "text-ct-muted";
+          : maxChars && charCount > maxChars
+            ? "text-ct-strike"
+            : maxChars && charCount > maxChars * 0.9
+              ? "text-ct-highlight"
+              : minChars && charCount < minChars
+                ? "text-ct-highlight"
+                : "text-ct-muted";
 
   const handleSourceChange = useCallback(
     (html: string) => {
@@ -339,10 +356,9 @@ export const ComponentEditor = forwardRef<ComponentEditorHandle, ComponentEditor
 
       {/* Footer: char count + source toggle */}
       <div className="flex items-center justify-between border-t border-ct-rule px-3 py-1.5">
-        <span className={`text-xs ${charColor}`}>
-          {charCount}
-          {maxChars ? ` / ${maxChars}` : ""}
-          {minChars ? ` (min ${minChars})` : ""}
+        <span className={`text-xs ${countColor}`}>
+          {wordCount}{maxWords ? ` / ${maxWords}` : ""} words
+          {minWords && wordCount < minWords ? ` (min ${minWords})` : ""}
         </span>
         <button
           onClick={toggleSource}
