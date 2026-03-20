@@ -11,7 +11,8 @@ import { logUsage } from "@/lib/usage-log";
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { category, user_prompt, voice_profile, business_name, source_content, turnstile_token } = body;
+  const { category, user_prompt, voice_profile, business_name, source_content, turnstile_token, feedback, current_copy } = body;
+  const isRefining = !!feedback && !!current_copy;
 
   // Turnstile verification
   if (turnstile_token) {
@@ -43,11 +44,27 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  if (!user_prompt || typeof user_prompt !== "string" || user_prompt.length > 1000) {
+  // For refinement, user_prompt can be empty (the original prompt may be lost
+  // on older blocks). The feedback field is what matters.
+  if (!isRefining && (!user_prompt || typeof user_prompt !== "string" || user_prompt.length > 1000)) {
     return NextResponse.json(
       { error: "Prompt is required (max 1000 characters)" },
       { status: 400 }
     );
+  }
+  if (isRefining) {
+    if (typeof feedback !== "string" || feedback.length > 1000) {
+      return NextResponse.json(
+        { error: "Feedback is required (max 1000 characters)" },
+        { status: 400 }
+      );
+    }
+    if (typeof current_copy !== "string" || current_copy.length > 50000) {
+      return NextResponse.json(
+        { error: "Current copy is too long" },
+        { status: 400 }
+      );
+    }
   }
 
   if (!voice_profile || !business_name) {
@@ -85,10 +102,12 @@ CONTENT CATEGORY: ${categoryInfo.label}
 CATEGORY GUIDANCE: ${categoryInfo.guidance}
 
 USER REQUEST:
-${user_prompt}
+${user_prompt || "(see refinement feedback below)"}
+${isRefining ? `\nCURRENT COPY (revise this based on the feedback below):\n${current_copy}\n\nFEEDBACK:\n${feedback}` : ""}
 
 Respond with ONLY valid JSON matching this exact structure:
 {
+  "title": "1-4 word title for this copy block",
   "content": "Your generated copy here. Use \\n for line breaks if multiple paragraphs are appropriate.",
   "notes": {
     "reasoning": "Brief explanation of your copywriting choices (1-2 sentences)",
@@ -99,6 +118,7 @@ Respond with ONLY valid JSON matching this exact structure:
     );
 
     const parsed = parseResponse(result);
+    const title = typeof parsed.title === "string" ? parsed.title : "";
     const content = typeof parsed.content === "string"
       ? textToDoc(parsed.content)
       : textToDoc(String(parsed.content ?? ""));
@@ -113,6 +133,7 @@ Respond with ONLY valid JSON matching this exact structure:
     });
 
     return NextResponse.json({
+      title,
       content,
       ai_notes: {
         generation_reasoning: notes?.reasoning ?? "",
