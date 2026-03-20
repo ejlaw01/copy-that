@@ -5,6 +5,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { AnimatedEllipsis } from "@/components/AnimatedEllipsis";
 import { GenerationWorkspace } from "@/components/GenerationWorkspace";
 import { SavePrompt } from "@/components/SavePrompt";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { supabase } from "@/lib/supabase/client";
 import {
   getSession,
@@ -80,6 +81,7 @@ export default function Home() {
   const [sessionIndicator, setSessionIndicator] = useState(false);
   const [syncStatus, setSyncStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const syncTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const [confirmDialog, setConfirmDialog] = useState<{ message: string; onConfirm: () => void } | null>(null);
 
   // Wraps an async sync call with status transitions.
   // Sets 'saving' immediately, then 'saved' (auto-clears after 1.5s) or 'error'.
@@ -145,6 +147,21 @@ export default function Home() {
         switchToNew();
       }
     }
+  }
+
+  // Save a new profile without generating a voice profile.
+  // The voice profile is created lazily on first generation via ensureContext().
+  function handleSaveNew() {
+    if (!form.name) return;
+    const ctx = form as BrandContext;
+    const syncPromise = saveBrandContextWithSync(ctx, isAuthenticated);
+    if (isAuthenticated) withSync(() => syncPromise);
+    setContexts((prev) => [...prev, ctx]);
+    setActiveTab(ctx.id);
+    setActiveContext(ctx.id);
+    setBrandOpen(false);
+    setEditing(false);
+    setSessionIndicator(true);
   }
 
   // Save edits to an existing profile (re-generate voice profile)
@@ -421,12 +438,12 @@ export default function Home() {
     <div className="min-h-screen">
       {/* Header */}
       <header className="flex items-center justify-between px-6 py-4 border-b border-ct-rule">
-        <h1 className="font-display text-lg font-semibold tracking-tight">Copy That</h1>
+        <h1 className="font-display text-lg font-semibold tracking-tight">Copy <span className="text-ct-accent">That</span></h1>
         <div className="flex items-center gap-3">
           {authChecked && sessionIndicator && !isAuthenticated && activeContext && (
             <button
               onClick={() => setShowSavePrompt(true)}
-              className="text-xs text-ct-rule hover:text-ct-muted transition-colors"
+              className="text-xs text-ct-muted hover:text-ct-ink transition-colors"
             >
               unsaved — session only
             </button>
@@ -438,10 +455,10 @@ export default function Home() {
             <span className="text-xs text-ct-muted">Saved</span>
           )}
           {isAuthenticated && syncStatus === "error" && (
-            <span className="text-xs text-amber-600">Sync failed</span>
+            <span className="text-xs text-ct-strike">Sync failed</span>
           )}
           {userEmail ? (
-            <span className="text-xs text-ct-rule">{userEmail}</span>
+            <span className="text-xs text-ct-muted">{userEmail}</span>
           ) : authChecked && (
             <button
               onClick={() => setShowSavePrompt(true)}
@@ -501,7 +518,15 @@ export default function Home() {
                 <span className="text-xs">{brandOpen ? "▼" : "▶"}</span>
                 Profile
               </button>
-              {brandOpen && activeTab !== "new" && editing && (
+              {brandOpen && editing && activeTab === "new" && canGenerate && (
+                <button
+                  onClick={handleSaveNew}
+                  className="text-xs font-ui font-medium text-ct-muted hover:text-ct-ink transition-colors"
+                >
+                  Save Profile
+                </button>
+              )}
+              {brandOpen && editing && activeTab !== "new" && (
                 <div className="flex items-center gap-2">
                   <button
                     onClick={handleSaveEdits}
@@ -514,7 +539,7 @@ export default function Home() {
                       setForm(activeContext!);
                       setEditing(false);
                     }}
-                    className="text-xs font-ui text-ct-rule hover:text-ct-muted transition-colors"
+                    className="text-xs font-ui text-ct-muted hover:text-ct-ink transition-colors"
                   >
                     Cancel
                   </button>
@@ -535,9 +560,13 @@ export default function Home() {
                   )}
                   <button
                     onClick={() => {
-                      if (confirm(`Delete "${activeContext?.name || "this profile"}"?`)) {
-                        handleDelete(activeTab);
-                      }
+                      setConfirmDialog({
+                        message: `Delete "${activeContext?.name || "this profile"}" and all its copy blocks?`,
+                        onConfirm: () => {
+                          handleDelete(activeTab);
+                          setConfirmDialog(null);
+                        },
+                      });
                     }}
                     className="text-xs font-ui text-ct-rule hover:text-ct-strike transition-colors"
                   >
@@ -548,7 +577,7 @@ export default function Home() {
             </div>
 
             {brandOpen && (
-              <div className="max-w-xl">
+              <div>
                 {editing ? (
                   <BrandForm form={form} update={update} canGenerate={canGenerate} isNew={activeTab === "new"} />
                 ) : (
@@ -575,6 +604,7 @@ export default function Home() {
                 setSyncStatus(status);
               }
             }}
+            onConfirm={(message, onConfirm) => setConfirmDialog({ message, onConfirm: () => { onConfirm(); setConfirmDialog(null); } })}
           />
           </>
           )}
@@ -585,6 +615,14 @@ export default function Home() {
         <SavePrompt
           onAuthComplete={() => setShowSavePrompt(false)}
           onDismiss={() => setShowSavePrompt(false)}
+        />
+      )}
+
+      {confirmDialog && (
+        <ConfirmDialog
+          message={confirmDialog.message}
+          onConfirm={confirmDialog.onConfirm}
+          onCancel={() => setConfirmDialog(null)}
         />
       )}
     </div>
@@ -701,7 +739,7 @@ function BrandForm({
       </div>
 
       {isNew && !canGenerate && (
-        <p className="text-xs text-ct-rule">
+        <p className="text-xs text-ct-muted">
           Fill in the required fields above to start generating
         </p>
       )}
@@ -832,7 +870,7 @@ function ChipPicker({
             </span>
           ))
         ) : (
-          <span className="text-xs text-ct-rule">No selections yet</span>
+          <span className="text-xs text-ct-muted">No selections yet</span>
         )}
       </div>
 
