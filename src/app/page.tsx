@@ -2,18 +2,24 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { AnimatedEllipsis } from "@/components/AnimatedEllipsis";
 import { GenerationWorkspace } from "@/components/GenerationWorkspace";
 import { SavePrompt } from "@/components/SavePrompt";
 import { supabase } from "@/lib/supabase/client";
 import {
   getSession,
+  setSession,
   getActiveContext,
   setActiveContext,
   getGenerationCount,
+  getSessionUserId,
+  setSessionUserId,
+  clearSessionUserId,
   newContextId,
-  saveBrandContext,
-  deleteBrandContext,
+  saveBrandContextWithSync,
+  deleteBrandContextWithSync,
   type BrandContext,
+  type CopyBlock,
 } from "@/lib/session-storage";
 
 const ANON_GENERATION_LIMIT = 6;
@@ -66,9 +72,29 @@ export default function Home() {
   const [contexts, setContexts] = useState<BrandContext[]>([]);
   const [activeTab, setActiveTab] = useState<ActiveTab>("new");
   const [showSavePrompt, setShowSavePrompt] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const isAuthenticated = !!userEmail;
   const isAuthenticatedRef = useRef(false);
   const [sessionIndicator, setSessionIndicator] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const syncTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  // Wraps an async sync call with status transitions.
+  // Sets 'saving' immediately, then 'saved' (auto-clears after 1.5s) or 'error'.
+  function withSync(syncFn: () => Promise<{ syncError?: string }>) {
+    setSyncStatus("saving");
+    syncFn().then(({ syncError }) => {
+      if (syncError) {
+        setSyncStatus("error");
+      } else {
+        setSyncStatus("saved");
+        clearTimeout(syncTimerRef.current);
+        syncTimerRef.current = setTimeout(() => setSyncStatus("idle"), 1500);
+      }
+    });
+  }
 
   // Profile panel state
   const [brandOpen, setBrandOpen] = useState(true);
@@ -105,7 +131,12 @@ export default function Home() {
 
   // Delete a profile
   function handleDelete(id: string) {
-    const session = deleteBrandContext(id);
+    // deleteBrandContextWithSync writes sessionStorage synchronously,
+    // then fires the Supabase DELETE in the background.
+    const syncPromise = deleteBrandContextWithSync(id, isAuthenticated);
+    if (isAuthenticated) withSync(() => syncPromise);
+
+    const session = getSession();
     setContexts(session.brand_contexts);
     if (activeTab === id) {
       if (session.brand_contexts.length > 0) {
@@ -122,65 +153,181 @@ export default function Home() {
     const updated = { ...activeContext, ...form } as BrandContext;
     // Clear voice profile so it regenerates on next generate
     updated.voice_profile = "";
-    saveBrandContext(updated);
+    const syncPromise = saveBrandContextWithSync(updated, isAuthenticated);
+    if (isAuthenticated) withSync(() => syncPromise);
     setContexts((prev) => prev.map((c) => c.id === updated.id ? updated : c));
     setEditing(false);
   }
 
-  // Auth state
-  useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) {
-        setIsAuthenticated(true);
-        isAuthenticatedRef.current = true;
-      }
-    });
+  // Helper: hydrate React state from a session-shaped object
+  function hydrateFromSession(data: {
+    brand_contexts: BrandContext[];
+    active_context_id: string | null;
+  }) {
+    if (data.brand_contexts.length === 0) return;
+    setContexts(data.brand_contexts);
+    const active = data.active_context_id
+      ? data.brand_contexts.find((c) => c.id === data.active_context_id)
+      : data.brand_contexts[0];
+    if (active) {
+      setActiveTab(active.id);
+      setForm(active);
+      setBrandOpen(false);
+      setEditing(false);
+    }
+    setSessionIndicator(true);
+  }
 
+  // Auth + data loading — runs once on mount.
+  // Combines auth check, Supabase fetch (for authed users), and sessionStorage
+  // restore (for anon users) into a single effect so there's one loading gate.
+  useEffect(() => {
+    let cancelled = false;
+
+    async function init() {
+      const { data: { user } } = await supabase.auth.getUser();
+
+      if (cancelled) return;
+
+      if (user) {
+        setUserEmail(user.email ?? null);
+        isAuthenticatedRef.current = true;
+        setAuthChecked(true);
+
+        // Skip-fetch optimization: if sessionStorage already has this user's
+        // data (same tab, soft refresh), skip the API call. The stored user ID
+        // acts as a cache key — if the user signed into a different account,
+        // we clear and re-fetch.
+        const storedUserId = getSessionUserId();
+        if (storedUserId === user.id) {
+          const session = getSession();
+          if (session.brand_contexts.length > 0) {
+            hydrateFromSession(session);
+            setIsLoading(false);
+            return;
+          }
+        }
+
+        // Different user or no cached data — fetch from Supabase
+        try {
+          const res = await fetch("/api/data");
+          if (res.ok) {
+            const data = await res.json();
+            if (cancelled) return;
+            // Populate sessionStorage so subsequent soft refreshes skip the fetch
+            setSession(data);
+            setSessionUserId(user.id);
+            hydrateFromSession(data);
+          } else {
+            console.error("[init] /api/data returned", res.status, await res.text().catch(() => ""));
+          }
+        } catch (err) {
+          console.error("[init] /api/data fetch failed", err);
+        }
+      } else {
+        setAuthChecked(true);
+        clearSessionUserId();
+
+        // Anonymous: restore from sessionStorage (existing behavior)
+        const session = getSession();
+        if (session.brand_contexts.length > 0) {
+          setContexts(session.brand_contexts);
+          const ctx = getActiveContext();
+          if (ctx) {
+            setActiveTab(ctx.id);
+            setForm(ctx);
+            setBrandOpen(false);
+            setEditing(false);
+          }
+          setSessionIndicator(true);
+        }
+      }
+
+      if (!cancelled) setIsLoading(false);
+    }
+
+    init();
+
+    // Auth state change listener — handles sign-in/sign-out during the session.
+    // The initial auth check above handles the page-load case; this listener
+    // handles the magic-link-callback-in-same-tab case.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (event === "SIGNED_IN" && session?.user) {
-          setIsAuthenticated(true);
+          setUserEmail(session.user.email ?? null);
           isAuthenticatedRef.current = true;
           setShowSavePrompt(false);
 
-          const sessionData = getSession();
-          if (sessionData.brand_contexts.length > 0) {
-            const consent = sessionStorage.getItem("copythat_marketing_consent");
-            await fetch("/api/migrate", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                ...sessionData,
-                marketing_consent: consent ? JSON.parse(consent) : true,
-              }),
-            });
-            sessionStorage.removeItem("copythat_marketing_consent");
+          // Fetch server data first to decide whether migration is needed.
+          // On re-sign-in the user already has data in Supabase — migrating
+          // stale sessionStorage would INSERT duplicates (migrate uses INSERT,
+          // not upsert, because it remaps client UUIDs to server-generated IDs).
+          let serverData: { brand_contexts: BrandContext[]; copy_blocks: CopyBlock[]; active_context_id: string | null } | null = null;
+          try {
+            const res = await fetch("/api/data");
+            if (res.ok) {
+              serverData = await res.json();
+            }
+          } catch {
+            // Network error — fall through, migration will be skipped too
+          }
+
+          // Only migrate if the account has no server data and we have
+          // local anonymous data worth saving. This prevents the re-sign-in
+          // duplication bug while still supporting first-time sign-in migration.
+          if (serverData && serverData.brand_contexts.length === 0) {
+            const sessionData = getSession();
+            if (sessionData.brand_contexts.length > 0) {
+              const consent = sessionStorage.getItem("copythat_marketing_consent");
+              await fetch("/api/migrate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  ...sessionData,
+                  marketing_consent: consent ? JSON.parse(consent) : true,
+                }),
+              });
+              sessionStorage.removeItem("copythat_marketing_consent");
+
+              // Re-fetch to pick up migrated data with server-generated IDs
+              try {
+                const postMigrateRes = await fetch("/api/data");
+                if (postMigrateRes.ok) {
+                  serverData = await postMigrateRes.json();
+                }
+              } catch {
+                // Keep pre-migration serverData (empty)
+              }
+            }
+          }
+
+          // Hydrate from whatever server state we have
+          if (serverData) {
+            setSession(serverData);
+            setSessionUserId(session.user.id);
+            hydrateFromSession(serverData);
           }
         }
         if (event === "SIGNED_OUT") {
-          setIsAuthenticated(false);
+          setUserEmail(null);
           isAuthenticatedRef.current = false;
+          clearSessionUserId();
+          // Clear session data so stale brand contexts don't trigger
+          // re-migration on the next sign-in.
+          setSession({ brand_contexts: [], copy_blocks: [], active_context_id: null });
+          setContexts([]);
+          setActiveTab("new");
+          setForm(emptyForm());
+          setBrandOpen(true);
+          setEditing(true);
         }
       }
     );
 
-    return () => subscription.unsubscribe();
-  }, []);
-
-  // Load existing session
-  useEffect(() => {
-    const session = getSession();
-    if (session.brand_contexts.length > 0) {
-      setContexts(session.brand_contexts);
-      const ctx = getActiveContext();
-      if (ctx) {
-        setActiveTab(ctx.id);
-        setForm(ctx);
-        setBrandOpen(false);
-        setEditing(false);
-      }
-      setSessionIndicator(true);
-    }
+    return () => {
+      cancelled = true;
+      subscription.unsubscribe();
+    };
   }, []);
 
   const checkSavePrompt = useCallback(() => {
@@ -246,7 +393,8 @@ export default function Home() {
     form.voice_profile = data.voice_profile;
 
     const ctx = form as BrandContext;
-    saveBrandContext(ctx);
+    const syncPromise = saveBrandContextWithSync(ctx, isAuthenticated);
+    if (isAuthenticated) withSync(() => syncPromise);
 
     setContexts((prev) => {
       const idx = prev.findIndex((c) => c.id === ctx.id);
@@ -275,7 +423,7 @@ export default function Home() {
       <header className="flex items-center justify-between px-6 py-4 border-b border-ct-rule">
         <h1 className="font-display text-lg font-semibold tracking-tight">Copy That</h1>
         <div className="flex items-center gap-3">
-          {sessionIndicator && !isAuthenticated && activeContext && (
+          {authChecked && sessionIndicator && !isAuthenticated && activeContext && (
             <button
               onClick={() => setShowSavePrompt(true)}
               className="text-xs text-ct-rule hover:text-ct-muted transition-colors"
@@ -283,8 +431,24 @@ export default function Home() {
               unsaved — session only
             </button>
           )}
-          {isAuthenticated && (
-            <span className="text-xs text-ct-rule">saved</span>
+          {isAuthenticated && syncStatus === "saving" && (
+            <span className="text-xs text-ct-muted">Saving<AnimatedEllipsis /></span>
+          )}
+          {isAuthenticated && syncStatus === "saved" && (
+            <span className="text-xs text-ct-muted">Saved</span>
+          )}
+          {isAuthenticated && syncStatus === "error" && (
+            <span className="text-xs text-amber-600">Sync failed</span>
+          )}
+          {userEmail ? (
+            <span className="text-xs text-ct-rule">{userEmail}</span>
+          ) : authChecked && (
+            <button
+              onClick={() => setShowSavePrompt(true)}
+              className="text-xs font-ui text-ct-muted hover:text-ct-ink transition-colors"
+            >
+              Sign in
+            </button>
           )}
           <ThemeToggle />
         </div>
@@ -292,6 +456,12 @@ export default function Home() {
 
       <main className="px-6 py-8">
         <div className="mx-auto max-w-4xl">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-24">
+              <span className="text-sm text-ct-muted">Loading<AnimatedEllipsis /></span>
+            </div>
+          ) : (
+          <>
           {/* Profile tabs */}
           <div className="flex items-center gap-1 mb-6 border-b border-ct-rule overflow-x-auto">
             {contexts.map((c) => (
@@ -395,7 +565,19 @@ export default function Home() {
             canGenerate={canGenerate}
             ensureContext={ensureContext}
             onGenerate={checkSavePrompt}
+            isAuthenticated={isAuthenticated}
+            onSyncStatus={(status) => {
+              if (status === "saved") {
+                setSyncStatus("saved");
+                clearTimeout(syncTimerRef.current);
+                syncTimerRef.current = setTimeout(() => setSyncStatus("idle"), 1500);
+              } else {
+                setSyncStatus(status);
+              }
+            }}
           />
+          </>
+          )}
         </div>
       </main>
 

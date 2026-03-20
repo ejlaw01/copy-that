@@ -132,6 +132,51 @@ export function getGenerationCount(): number {
   return getSession().generation_count;
 }
 
+// ── Bulk hydration helpers ────────────────────────────────────────
+// Used when loading data from Supabase for authenticated users.
+// Writes everything in one pass instead of calling saveBrandContext/saveCopyBlock
+// in a loop, which would re-serialize on every call (O(n²) writes).
+
+export function setSession(data: {
+  brand_contexts: BrandContext[];
+  copy_blocks: CopyBlock[];
+  active_context_id: string | null;
+}): void {
+  const session = getSession();
+  session.brand_contexts = data.brand_contexts;
+  session.copy_blocks = data.copy_blocks;
+  session.active_context_id = data.active_context_id;
+
+  // Auto-select the most recent block for the active context.
+  // copy_blocks arrive sorted by created_at desc from the API,
+  // so the first match is the most recently created/edited block.
+  if (data.active_context_id) {
+    const latestBlock = data.copy_blocks.find(
+      (b) => b.brand_context_id === data.active_context_id,
+    );
+    session.active_block_id = latestBlock?.id ?? null;
+  } else {
+    session.active_block_id = null;
+  }
+
+  saveSession(session);
+}
+
+const USER_ID_KEY = "copythat_user_id";
+
+export function getSessionUserId(): string | null {
+  if (typeof window === "undefined") return null;
+  return sessionStorage.getItem(USER_ID_KEY);
+}
+
+export function setSessionUserId(id: string): void {
+  sessionStorage.setItem(USER_ID_KEY, id);
+}
+
+export function clearSessionUserId(): void {
+  sessionStorage.removeItem(USER_ID_KEY);
+}
+
 export function deleteBrandContext(id: string): SessionData {
   const session = getSession();
   session.brand_contexts = session.brand_contexts.filter((c) => c.id !== id);
@@ -141,4 +186,84 @@ export function deleteBrandContext(id: string): SessionData {
   }
   saveSession(session);
   return session;
+}
+
+export function deleteCopyBlock(id: string): SessionData {
+  const session = getSession();
+  session.copy_blocks = session.copy_blocks.filter((b) => b.id !== id);
+  if (session.active_block_id === id) {
+    session.active_block_id = null;
+  }
+  saveSession(session);
+  return session;
+}
+
+// ── Supabase sync companions ─────────────────────────────────────
+// Each function writes to sessionStorage first (synchronous, always succeeds),
+// then fires a non-blocking Supabase sync if the user is authenticated.
+// The sync never rolls back the local write — it's fire-and-report.
+// Callers use the returned `syncError` to drive a status indicator.
+
+interface SyncResult {
+  syncError?: string;
+}
+
+async function syncFetch(
+  url: string,
+  options: RequestInit,
+): Promise<SyncResult> {
+  try {
+    const res = await fetch(url, options);
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      return { syncError: data.error || "Sync failed" };
+    }
+    return {};
+  } catch {
+    return { syncError: "Network error — changes saved locally" };
+  }
+}
+
+export async function saveBrandContextWithSync(
+  ctx: BrandContext,
+  isAuthenticated: boolean,
+): Promise<SyncResult> {
+  saveBrandContext(ctx);
+  if (!isAuthenticated) return {};
+  return syncFetch("/api/brand-context", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ brand_context: ctx }),
+  });
+}
+
+export async function deleteBrandContextWithSync(
+  id: string,
+  isAuthenticated: boolean,
+): Promise<SyncResult> {
+  deleteBrandContext(id);
+  if (!isAuthenticated) return {};
+  return syncFetch(`/api/brand-context/${id}`, { method: "DELETE" });
+}
+
+export async function saveCopyBlockWithSync(
+  block: CopyBlock,
+  isAuthenticated: boolean,
+): Promise<SyncResult> {
+  saveCopyBlock(block);
+  if (!isAuthenticated) return {};
+  return syncFetch("/api/copy-block", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ copy_block: block }),
+  });
+}
+
+export async function deleteCopyBlockWithSync(
+  id: string,
+  isAuthenticated: boolean,
+): Promise<SyncResult> {
+  deleteCopyBlock(id);
+  if (!isAuthenticated) return {};
+  return syncFetch(`/api/copy-block/${id}`, { method: "DELETE" });
 }

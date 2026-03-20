@@ -4,10 +4,14 @@ import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { ComponentEditor, type ComponentEditorHandle } from "@/components/ComponentEditor";
 import { Turnstile, type TurnstileHandle } from "@/components/Turnstile";
 import { ServiceUnavailable } from "@/components/ServiceUnavailable";
+import { AnimatedEllipsis } from "@/components/AnimatedEllipsis";
 import { CONTENT_CATEGORIES, CATEGORY_KEYS } from "@/lib/component-types";
 import type { TipTapDoc } from "@/lib/tiptap-utils";
 import {
   saveCopyBlock,
+  saveCopyBlockWithSync,
+  deleteCopyBlock,
+  deleteCopyBlockWithSync,
   incrementGenerationCount,
   getSession,
   getActiveBlock,
@@ -152,6 +156,8 @@ interface GenerationWorkspaceProps {
   canGenerate: boolean;
   ensureContext: () => Promise<BrandContext | null>;
   onGenerate?: () => void;
+  isAuthenticated?: boolean;
+  onSyncStatus?: (status: "saving" | "saved" | "error") => void;
 }
 
 interface AiNotes {
@@ -165,6 +171,8 @@ export function GenerationWorkspace({
   canGenerate,
   ensureContext,
   onGenerate,
+  isAuthenticated = false,
+  onSyncStatus,
 }: GenerationWorkspaceProps) {
   const [generating, setGenerating] = useState(false);
   const editorRef = useRef<ComponentEditorHandle>(null);
@@ -173,6 +181,25 @@ export function GenerationWorkspace({
   const [error, setError] = useState<string | null>(null);
   const [softLimit, setSoftLimit] = useState(false);
   const [serviceDown, setServiceDown] = useState(false);
+
+  // Fire-and-forget sync for copy blocks. Drives the parent's status indicator
+  // without blocking any UI. The sessionStorage write happens synchronously
+  // inside saveCopyBlockWithSync before the fetch fires.
+  function syncBlock(block: CopyBlock) {
+    if (!isAuthenticated) return;
+    onSyncStatus?.("saving");
+    saveCopyBlockWithSync(block, true).then(({ syncError }) => {
+      onSyncStatus?.(syncError ? "error" : "saved");
+    });
+  }
+
+  function syncDeleteBlock(id: string) {
+    if (!isAuthenticated) return;
+    onSyncStatus?.("saving");
+    deleteCopyBlockWithSync(id, true).then(({ syncError }) => {
+      onSyncStatus?.(syncError ? "error" : "saved");
+    });
+  }
 
   // Restore state from session storage
   const [history, setHistory] = useState<CopyBlock[]>(() => {
@@ -258,6 +285,7 @@ export function GenerationWorkspace({
         created_at: new Date().toISOString(),
       };
       saveCopyBlock(snapshot);
+      syncBlock(snapshot);
       updatedHistory = [snapshot, ...history];
       setHistory(updatedHistory);
     }
@@ -326,6 +354,7 @@ export function GenerationWorkspace({
       };
 
       saveCopyBlock(block);
+      syncBlock(block);
       setActiveBlock(block.id);
       setCurrentBlock(block);
       setAiNotes(data.ai_notes);
@@ -350,7 +379,11 @@ export function GenerationWorkspace({
       const updated = { ...currentBlock, content: json };
       setCurrentBlock(updated);
       saveCopyBlock(updated);
+      syncBlock(updated);
     },
+    // syncBlock is stable (depends on isAuthenticated/onSyncStatus from props,
+    // not on state that changes per-keystroke), so including it here is safe.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [currentBlock],
   );
 
@@ -398,10 +431,29 @@ export function GenerationWorkspace({
       created_at: new Date().toISOString(),
     };
     saveCopyBlock(newBlock);
+    syncBlock(newBlock);
     setActiveBlock(newBlock.id);
     setCurrentBlock(newBlock);
     setAiNotes(null);
     setHistory((prev) => [newBlock, ...prev]);
+  }
+
+  function handleDeleteBlock() {
+    if (!currentBlock) return;
+    if (!confirm("Delete this block?")) return;
+
+    const blockId = currentBlock.id;
+    deleteCopyBlock(blockId);
+    syncDeleteBlock(blockId);
+
+    const remaining = history.filter((b) => b.id !== blockId);
+    setHistory(remaining);
+    setActiveBlock(null);
+    setCurrentBlock(null);
+    setAiNotes(null);
+    setCategory("general");
+    setUserPrompt("");
+    setFeedback("");
   }
 
   function handleKeyDown(e: React.KeyboardEvent) {
@@ -449,6 +501,7 @@ export function GenerationWorkspace({
       const updated = { ...currentBlock, ai_notes: notes };
       setCurrentBlock(updated);
       saveCopyBlock(updated);
+      syncBlock(updated);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Analysis failed");
     } finally {
@@ -572,7 +625,7 @@ export function GenerationWorkspace({
               disabled={generating || !userPrompt.trim() || !canGenerate}
               className="ct-btn ct-btn-primary disabled:opacity-30"
             >
-              {generating ? "Generating..." : "Generate"}
+              {generating ? <>Generating<AnimatedEllipsis /></> : "Generate"}
             </button>
           </div>
         )}
@@ -606,6 +659,12 @@ export function GenerationWorkspace({
               className="ml-auto ct-btn ct-btn-secondary text-xs"
             >
               Save Version
+            </button>
+            <button
+              onClick={handleDeleteBlock}
+              className="ct-btn ct-btn-secondary text-xs text-ct-rule hover:text-ct-strike transition-colors"
+            >
+              Delete
             </button>
           </div>
 
@@ -778,7 +837,7 @@ export function GenerationWorkspace({
               disabled={analyzing}
               className="ct-btn ct-btn-secondary text-xs disabled:opacity-30"
             >
-              {analyzing ? "Analyzing..." : "Get Feedback"}
+              {analyzing ? <>Analyzing<AnimatedEllipsis /></> : "Get Feedback"}
             </button>
           )}
 
@@ -811,7 +870,7 @@ export function GenerationWorkspace({
                 disabled={generating || !feedback.trim() || !canGenerate}
                 className="ct-btn ct-btn-primary disabled:opacity-30"
               >
-                {generating ? "Working..." : "Apply"}
+                {generating ? <>Working<AnimatedEllipsis /></> : "Apply"}
               </button>
             </div>
           </div>
