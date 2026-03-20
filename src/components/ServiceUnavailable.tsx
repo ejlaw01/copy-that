@@ -91,7 +91,7 @@ export function ServiceUnavailable({ onDismiss }: ServiceUnavailableProps) {
                 <button
                   type="submit"
                   disabled={sending || !message.trim()}
-                  className="ct-btn ct-btn-primary disabled:opacity-30"
+                  className="ct-btn ct-btn-primary"
                 >
                   {sending ? "Sending..." : "Send"}
                 </button>

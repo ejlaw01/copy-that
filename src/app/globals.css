@@ -71,8 +71,8 @@
   --ct-paper:         #1c1917;
   --ct-ink:           #f7f3ed;
   --ct-cream:         #292524;
-  --ct-rule:          #44403c;
-  --ct-muted:         #a8a29e;
+  --ct-rule:          #78716c;
+  --ct-muted:         #c8c3bd;
   --ct-accent:        #d4845a;
   --ct-accent-hover:  #e09570;
   --ct-accent-light:  #3d2e24;
@@ -161,7 +161,7 @@ body {
   font-family: var(--font-ui), 'Helvetica Neue', sans-serif;
   font-size: var(--text-base);
   color: var(--ct-ink);
-  background: white;
+  background: var(--ct-paper);
   border: var(--border-hairline);
   border-radius: var(--radius-sm);
   padding: var(--space-3) var(--space-4);
@@ -183,7 +183,7 @@ body {
   font-family: var(--font-ui), 'Helvetica Neue', sans-serif;
   font-size: var(--text-base);
   color: var(--ct-ink);
-  background: white;
+  background: var(--ct-paper);
   border: var(--border-hairline);
   border-radius: var(--radius-sm);
   padding: var(--space-4);
@@ -217,6 +217,11 @@ body {
 
 .ct-btn:active {
   transform: translateY(1px);
+}
+
+.ct-btn[disabled] {
+  opacity: 0.3 !important;
+  pointer-events: none !important;
 }
 
 .ct-btn-primary {

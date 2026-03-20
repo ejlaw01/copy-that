@@ -179,7 +179,7 @@ export function BrandContextForm({ initial, onComplete }: BrandContextFormProps)
         <button
           onClick={handleFinish}
           disabled={!canSubmit() || loading}
-          className="ct-btn ct-btn-primary disabled:opacity-30"
+          className="ct-btn ct-btn-primary"
         >
           {loading ? "Setting up..." : "Create Voice Profile"}
         </button>
