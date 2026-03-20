@@ -18,6 +18,7 @@ export interface CopyBlock {
   id: string;
   brand_context_id: string;
   component_type: string;
+  title?: string;
   user_prompt?: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   content: any;
@@ -27,12 +28,21 @@ export interface CopyBlock {
   created_at: string;
 }
 
+export interface DraftPrompt {
+  category: string;
+  user_prompt: string;
+}
+
 export interface SessionData {
   brand_contexts: BrandContext[];
   active_context_id: string | null;
   copy_blocks: CopyBlock[];
   generation_count: number;
   active_block_id: string | null;
+  /** Per-profile draft prompt/category for the +New form */
+  drafts?: Record<string, DraftPrompt>;
+  /** Per-profile last active block ID */
+  active_block_per_context?: Record<string, string>;
 }
 
 const STORAGE_KEY = "copythat_session";
@@ -107,6 +117,40 @@ export function getActiveBlock(): CopyBlock | null {
   const session = getSession();
   if (!session.active_block_id) return null;
   return session.copy_blocks.find((b) => b.id === session.active_block_id) ?? null;
+}
+
+// ── Per-profile draft and active block helpers ───────────────
+
+export function saveDraft(contextId: string, draft: DraftPrompt): void {
+  const session = getSession();
+  if (!session.drafts) session.drafts = {};
+  session.drafts[contextId] = draft;
+  saveSession(session);
+}
+
+export function getDraft(contextId: string): DraftPrompt | null {
+  const session = getSession();
+  return session.drafts?.[contextId] ?? null;
+}
+
+export function setActiveBlockForContext(contextId: string, blockId: string | null): void {
+  const session = getSession();
+  if (!session.active_block_per_context) session.active_block_per_context = {};
+  if (blockId) {
+    session.active_block_per_context[contextId] = blockId;
+  } else {
+    delete session.active_block_per_context[contextId];
+  }
+  // Also update the global active_block_id for backward compat
+  session.active_block_id = blockId;
+  saveSession(session);
+}
+
+export function getActiveBlockForContext(contextId: string): CopyBlock | null {
+  const session = getSession();
+  const blockId = session.active_block_per_context?.[contextId];
+  if (!blockId) return null;
+  return session.copy_blocks.find((b) => b.id === blockId) ?? null;
 }
 
 export function saveCopyBlock(block: CopyBlock): SessionData {

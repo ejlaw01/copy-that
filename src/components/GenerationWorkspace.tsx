@@ -14,8 +14,10 @@ import {
   deleteCopyBlockWithSync,
   incrementGenerationCount,
   getSession,
-  getActiveBlock,
-  setActiveBlock,
+  getActiveBlockForContext,
+  setActiveBlockForContext,
+  saveDraft,
+  getDraft,
   type BrandContext,
   type CopyBlock,
 } from "@/lib/session-storage";
@@ -26,6 +28,7 @@ function getDocumentKey(block: CopyBlock): string {
 
 interface DocumentGroup {
   key: string;
+  title: string;
   label: string;
   promptPreview: string;
   versions: CopyBlock[];
@@ -54,6 +57,7 @@ function groupBlocksIntoDocuments(blocks: CopyBlock[]): DocumentGroup[] {
     const prompt = latest.user_prompt || "";
     groups.push({
       key,
+      title: latest.title || "",
       label:
         CONTENT_CATEGORIES[latest.component_type]?.label ??
         latest.component_type,
@@ -158,6 +162,7 @@ interface GenerationWorkspaceProps {
   onGenerate?: () => void;
   isAuthenticated?: boolean;
   onSyncStatus?: (status: "saving" | "saved" | "error") => void;
+  onConfirm?: (message: string, onConfirm: () => void) => void;
 }
 
 interface AiNotes {
@@ -173,8 +178,11 @@ export function GenerationWorkspace({
   onGenerate,
   isAuthenticated = false,
   onSyncStatus,
+  onConfirm,
 }: GenerationWorkspaceProps) {
   const [generating, setGenerating] = useState(false);
+  const [canSave, setCanSave] = useState(false);
+  const ignoreNextChangeRef = useRef(false);
   const editorRef = useRef<ComponentEditorHandle>(null);
   const turnstileRef = useRef<TurnstileHandle>(null);
   const turnstileTokenRef = useRef<string | null>(null);
@@ -193,6 +201,10 @@ export function GenerationWorkspace({
     });
   }
 
+  function setActiveBlock(id: string | null) {
+    if (context) setActiveBlockForContext(context.id, id);
+  }
+
   function syncDeleteBlock(id: string) {
     if (!isAuthenticated) return;
     onSyncStatus?.("saving");
@@ -209,18 +221,25 @@ export function GenerationWorkspace({
   });
   const [currentBlock, setCurrentBlock] = useState<CopyBlock | null>(() => {
     if (!context) return null;
-    return getActiveBlock();
+    return getActiveBlockForContext(context.id);
   });
   const [category, setCategory] = useState(() => {
-    const block = context ? getActiveBlock() : null;
-    return block?.component_type ?? "general";
+    if (!context) return "general";
+    const block = getActiveBlockForContext(context.id);
+    if (block) return block.component_type;
+    const draft = getDraft(context.id);
+    return draft?.category ?? "general";
   });
   const [userPrompt, setUserPrompt] = useState(() => {
-    const block = context ? getActiveBlock() : null;
-    return block?.user_prompt ?? "";
+    if (!context) return "";
+    const block = getActiveBlockForContext(context.id);
+    if (block) return block.user_prompt ?? "";
+    const draft = getDraft(context.id);
+    return draft?.user_prompt ?? "";
   });
   const [aiNotes, setAiNotes] = useState<AiNotes | null>(() => {
-    const block = context ? getActiveBlock() : null;
+    if (!context) return null;
+    const block = getActiveBlockForContext(context.id);
     return (block?.ai_notes as AiNotes | null) ?? null;
   });
 
@@ -245,18 +264,41 @@ export function GenerationWorkspace({
       ? activeGroup.versions.findIndex((v) => v.id === currentBlock.id)
       : -1;
 
-  // Restore state when context becomes available after mount
+  // Restore state when context changes, or clear when context is null (new profile).
+  // Saves the current draft prompt before switching so it persists across
+  // profile switches and tab closes (sessionStorage).
   const restoredContextRef = useRef<string | null>(null);
   useEffect(() => {
-    if (!context || restoredContextRef.current === context.id) return;
+    // Save draft from the previous context before switching
+    const prevId = restoredContextRef.current;
+    if (prevId && !currentBlock) {
+      saveDraft(prevId, { category, user_prompt: userPrompt });
+    }
+
+    if (!context) {
+      restoredContextRef.current = null;
+      setHistory([]);
+      setCurrentBlock(null);
+      setCategory("general");
+      setUserPrompt("");
+      setAiNotes(null);
+      setFeedback("");
+      setCanSave(false);
+      setShowVersions(false);
+      return;
+    }
+    if (restoredContextRef.current === context.id) return;
     restoredContextRef.current = context.id;
     const session = getSession();
     const blocks = session.copy_blocks.filter(
       (b) => b.brand_context_id === context.id,
     );
     setHistory(blocks);
-    const block = getActiveBlock();
+
+    // Restore the last active block for this profile
+    const block = getActiveBlockForContext(context.id);
     if (block && block.brand_context_id === context.id) {
+      ignoreNextChangeRef.current = true;
       setCurrentBlock(block);
       setCategory(block.component_type);
       setUserPrompt(block.user_prompt ?? "");
@@ -264,7 +306,12 @@ export function GenerationWorkspace({
     } else {
       setCurrentBlock(null);
       setAiNotes(null);
+      // Restore draft prompt for this profile's +New form
+      const draft = getDraft(context.id);
+      setCategory(draft?.category ?? "general");
+      setUserPrompt(draft?.user_prompt ?? "");
     }
+    setCanSave(false);
   }, [context]);
 
   async function handleGenerate() {
@@ -299,23 +346,21 @@ export function GenerationWorkspace({
         return;
       }
 
-      // Build the prompt: original request + feedback context if refining
-      let effectivePrompt = userPrompt;
-      if (isRefining) {
-        const currentText = docToPlainText(currentBlock!.content as TipTapDoc);
-        effectivePrompt = `${userPrompt}\n\nCURRENT COPY (revise this based on the feedback below):\n${currentText}\n\nFEEDBACK:\n${feedback.trim()}`;
-      }
-
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           category,
-          user_prompt: effectivePrompt,
+          user_prompt: userPrompt,
           voice_profile: ctx.voice_profile,
           business_name: ctx.business_name,
           source_content: ctx.source_content,
           turnstile_token: turnstileTokenRef.current,
+          // Refinement fields — server constructs the prompt from these
+          ...(isRefining && {
+            feedback: feedback.trim(),
+            current_copy: docToPlainText(currentBlock!.content as TipTapDoc),
+          }),
         }),
       });
 
@@ -346,6 +391,7 @@ export function GenerationWorkspace({
         id: crypto.randomUUID(),
         brand_context_id: ctx.id,
         component_type: category,
+        title: data.title || "",
         user_prompt: userPrompt,
         content: data.content,
         ai_notes: data.ai_notes,
@@ -356,9 +402,11 @@ export function GenerationWorkspace({
       saveCopyBlock(block);
       syncBlock(block);
       setActiveBlock(block.id);
+      ignoreNextChangeRef.current = true;
       setCurrentBlock(block);
       setAiNotes(data.ai_notes);
       setFeedback("");
+      setCanSave(false);
       setHistory((prev) => [block, ...prev]);
       onGenerate?.();
     } catch (err) {
@@ -378,6 +426,11 @@ export function GenerationWorkspace({
       if (!currentBlock) return;
       const updated = { ...currentBlock, content: json };
       setCurrentBlock(updated);
+      if (ignoreNextChangeRef.current) {
+        ignoreNextChangeRef.current = false;
+      } else {
+        setCanSave(true);
+      }
       saveCopyBlock(updated);
       syncBlock(updated);
     },
@@ -387,13 +440,22 @@ export function GenerationWorkspace({
     [currentBlock],
   );
 
-  function loadBlock(block: CopyBlock) {
+  function saveDraftIfNeeded() {
+    if (!currentBlock && context) {
+      saveDraft(context.id, { category, user_prompt: userPrompt });
+    }
+  }
+
+  function loadBlock(block: CopyBlock, { markDirty = false } = {}) {
+    saveDraftIfNeeded();
     setActiveBlock(block.id);
+    if (!markDirty) ignoreNextChangeRef.current = true;
     setCurrentBlock(block);
     setCategory(block.component_type);
     setUserPrompt(block.user_prompt ?? "");
     setAiNotes(block.ai_notes as AiNotes | null);
     setFeedback("");
+    setCanSave(markDirty);
   }
 
   async function handleCopy() {
@@ -433,20 +495,25 @@ export function GenerationWorkspace({
     saveCopyBlock(newBlock);
     syncBlock(newBlock);
     setActiveBlock(newBlock.id);
+    ignoreNextChangeRef.current = true;
     setCurrentBlock(newBlock);
     setAiNotes(null);
+    setCanSave(false);
     setHistory((prev) => [newBlock, ...prev]);
   }
 
-  function handleDeleteBlock() {
+  function executeDeleteBlock() {
     if (!currentBlock) return;
-    if (!confirm("Delete this block?")) return;
 
-    const blockId = currentBlock.id;
-    deleteCopyBlock(blockId);
-    syncDeleteBlock(blockId);
+    const docKey = getDocumentKey(currentBlock);
+    const toDelete = history.filter((b) => getDocumentKey(b) === docKey);
+    const remaining = history.filter((b) => getDocumentKey(b) !== docKey);
 
-    const remaining = history.filter((b) => b.id !== blockId);
+    for (const block of toDelete) {
+      deleteCopyBlock(block.id);
+      syncDeleteBlock(block.id);
+    }
+
     setHistory(remaining);
     setActiveBlock(null);
     setCurrentBlock(null);
@@ -519,52 +586,91 @@ export function GenerationWorkspace({
       />
 
       {/* Copy Blocks — Document Picker Strip */}
-      {documentGroups.length > 0 && (
-        <div className="mb-6 flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none border-t border-ct-rule pt-5">
-          {documentGroups.map((group) => (
-            <button
+      <div className="mb-6 flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none border-t border-ct-rule pt-5">
+        {documentGroups.map((group) => {
+          const isActive = activeDocKey === group.key;
+          return (
+            <span
               key={group.key}
-              onClick={() => {
-                loadBlock(group.latest);
-                setShowVersions(false);
-              }}
-              className={`shrink-0 rounded-full px-4 py-1.5 text-xs transition-colors ${
-                activeDocKey === group.key
+              className={`shrink-0 rounded-full py-1.5 pl-4 pr-1.5 text-xs transition-colors inline-flex items-center gap-1.5 ${
+                isActive
                   ? "bg-ct-ink text-ct-paper"
                   : "bg-ct-cream text-ct-muted hover:bg-ct-rule hover:text-ct-ink"
               }`}
             >
-              <span className="font-medium">{group.label}</span>
-              {group.promptPreview && (
-                <span
-                  className={
-                    activeDocKey === group.key
-                      ? "text-ct-paper/60"
-                      : "text-ct-rule"
+              <button
+                onClick={() => {
+                  loadBlock(group.latest);
+                  setShowVersions(false);
+                }}
+                className="cursor-pointer"
+              >
+                <span className="font-medium">{group.title || group.label}</span>
+                {group.title && (
+                  <span className={isActive ? "opacity-60" : "text-ct-rule"}>
+                    {" "}— {group.label}
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const docKey = group.key;
+                  if (onConfirm) {
+                    onConfirm("Delete this block and all its versions?", () => {
+                      const toDelete = history.filter((b) => getDocumentKey(b) === docKey);
+                      const remaining = history.filter((b) => getDocumentKey(b) !== docKey);
+                      for (const block of toDelete) {
+                        deleteCopyBlock(block.id);
+                        syncDeleteBlock(block.id);
+                      }
+                      setHistory(remaining);
+                      if (isActive) {
+                        setActiveBlock(null);
+                        setCurrentBlock(null);
+                        setAiNotes(null);
+                        setCategory("general");
+                        setUserPrompt("");
+                        setFeedback("");
+                      }
+                    });
                   }
-                >
-                  {" "}
-                  — {group.promptPreview}
-                </span>
-              )}
-            </button>
-          ))}
-          <button
-            onClick={() => {
-              setCurrentBlock(null);
-              setActiveBlock(null);
-              setCategory("general");
-              setUserPrompt("");
-              setFeedback("");
-              setAiNotes(null);
-              setShowVersions(false);
-            }}
-            className="shrink-0 rounded-full border border-dashed border-ct-rule px-4 py-1.5 text-xs font-ui text-ct-muted hover:text-ct-ink hover:border-ct-muted transition-colors"
-          >
-            + New
-          </button>
-        </div>
-      )}
+                }}
+                className={`flex items-center justify-center w-5 h-5 rounded-full transition-colors cursor-pointer ${
+                  isActive
+                    ? "text-ct-paper/40 hover:text-ct-strike hover:bg-ct-paper/10"
+                    : "text-ct-rule hover:text-ct-strike hover:bg-ct-strike/10"
+                }`}
+                aria-label={`Delete ${group.title || group.label}`}
+              >
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
+                  <path d="M2 2l6 6M8 2l-6 6" />
+                </svg>
+              </button>
+            </span>
+          );
+        })}
+        <button
+          onClick={() => {
+            setCurrentBlock(null);
+            setActiveBlock(null);
+            const draft = context ? getDraft(context.id) : null;
+            setCategory(draft?.category ?? "general");
+            setUserPrompt(draft?.user_prompt ?? "");
+            setFeedback("");
+            setAiNotes(null);
+            setCanSave(false);
+            setShowVersions(false);
+          }}
+          className={`shrink-0 rounded-full px-4 py-1.5 text-xs font-ui transition-colors ${
+            !currentBlock
+              ? "bg-ct-ink text-ct-paper"
+              : "border border-dashed border-ct-rule text-ct-muted hover:text-ct-ink hover:border-ct-muted"
+          }`}
+        >
+          + New
+        </button>
+      </div>
 
       {/* Category + Prompt */}
       <div className="mb-6 space-y-5 border-t border-ct-rule pt-5">
@@ -613,7 +719,7 @@ export function GenerationWorkspace({
 
         {!currentBlock && (
           <div className="flex items-center justify-between">
-            <span className="text-xs text-ct-rule">
+            <span className="text-xs text-ct-muted">
               {typeof navigator !== "undefined" &&
               navigator.platform?.includes("Mac")
                 ? "⌘"
@@ -623,7 +729,7 @@ export function GenerationWorkspace({
             <button
               onClick={handleGenerate}
               disabled={generating || !userPrompt.trim() || !canGenerate}
-              className="ct-btn ct-btn-primary disabled:opacity-30"
+              className="ct-btn ct-btn-primary"
             >
               {generating ? <>Generating<AnimatedEllipsis /></> : "Generate"}
             </button>
@@ -656,15 +762,10 @@ export function GenerationWorkspace({
             </button>
             <button
               onClick={handleSaveVersion}
+              disabled={!canSave}
               className="ml-auto ct-btn ct-btn-secondary text-xs"
             >
               Save Version
-            </button>
-            <button
-              onClick={handleDeleteBlock}
-              className="ct-btn ct-btn-secondary text-xs text-ct-rule hover:text-ct-strike transition-colors"
-            >
-              Delete
             </button>
           </div>
 
@@ -723,7 +824,7 @@ export function GenerationWorkspace({
                     return (
                       <div
                         key={version.id}
-                        onClick={() => loadBlock(version)}
+                        onClick={() => loadBlock(version, { markDirty: true })}
                         className={`rounded-[--radius-md] px-3 py-2 text-xs transition-colors cursor-pointer no-underline ${
                           currentBlock?.id === version.id
                             ? "bg-ct-cream text-ct-ink"
@@ -734,16 +835,16 @@ export function GenerationWorkspace({
                           <span className="font-medium">
                             Version {versionNum}
                           </span>
-                          <span className="text-ct-rule ml-2">
+                          <span className="text-ct-muted ml-2">
                             {relativeTime(version.created_at)}
                           </span>
                         </div>
                         <div className="mt-0.5">
                           {visibleLines.length === 0 && (
-                            <span className="text-ct-rule">(empty)</span>
+                            <span className="text-ct-muted">(empty)</span>
                           )}
                           {visibleLines.map((line, li) => (
-                            <div key={li} className="text-ct-rule">
+                            <div key={li} className="text-ct-muted">
                               {line.spans.map((s, si) =>
                                 s.type === "added" ? (
                                   <span
@@ -815,11 +916,11 @@ export function GenerationWorkspace({
               <label className="ct-label">
                 Analysis
               </label>
-              <div className="text-xs text-ct-muted space-y-2">
+              <div className="text-xs text-ct-ink space-y-2">
                 <p>{aiNotes.generation_reasoning}</p>
                 {aiNotes.suggestions && aiNotes.suggestions.length > 0 && (
                   <div>
-                    <p className="font-medium text-ct-muted mb-1">
+                    <p className="font-medium text-ct-ink mb-1">
                       Suggestions:
                     </p>
                     <ul className="list-disc list-inside space-y-0.5">
@@ -835,7 +936,7 @@ export function GenerationWorkspace({
             <button
               onClick={handleAnalyze}
               disabled={analyzing}
-              className="ct-btn ct-btn-secondary text-xs disabled:opacity-30"
+              className="ct-btn ct-btn-secondary text-xs"
             >
               {analyzing ? <>Analyzing<AnimatedEllipsis /></> : "Get Feedback"}
             </button>
@@ -858,7 +959,7 @@ export function GenerationWorkspace({
               className="ct-input resize-none"
             />
             <div className="flex items-center justify-between mt-1.5">
-              <span className="text-xs text-ct-rule">
+              <span className="text-xs text-ct-muted">
                 {typeof navigator !== "undefined" &&
                 navigator.platform?.includes("Mac")
                   ? "⌘"
@@ -868,7 +969,7 @@ export function GenerationWorkspace({
               <button
                 onClick={handleGenerate}
                 disabled={generating || !feedback.trim() || !canGenerate}
-                className="ct-btn ct-btn-primary disabled:opacity-30"
+                className="ct-btn ct-btn-primary"
               >
                 {generating ? <>Working<AnimatedEllipsis /></> : "Apply"}
               </button>

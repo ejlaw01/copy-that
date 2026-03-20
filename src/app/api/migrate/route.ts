@@ -68,12 +68,14 @@ export async function POST(req: NextRequest) {
   // Migrate copy blocks
   if (Array.isArray(copy_blocks) && copy_blocks.length > 0) {
     const blocks = copy_blocks
-      .map((block: { brand_context_id: string; component_type: string; content: unknown; ai_notes: unknown; version: number }) => {
+      .map((block: { brand_context_id: string; component_type: string; title?: string; user_prompt?: string; content: unknown; ai_notes: unknown; version: number }) => {
         const newContextId = idMap.get(block.brand_context_id);
         if (!newContextId) return null;
         return {
           brand_context_id: newContextId,
           component_type: block.component_type,
+          title: block.title ?? "",
+          user_prompt: block.user_prompt ?? "",
           content: block.content,
           ai_notes: block.ai_notes,
           version: block.version,

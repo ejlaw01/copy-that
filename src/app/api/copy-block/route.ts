@@ -47,6 +47,7 @@ export async function PUT(req: NextRequest) {
       id: block.id,
       brand_context_id: block.brand_context_id,
       component_type: block.component_type,
+      title: block.title ?? "",
       user_prompt: block.user_prompt ?? "",
       content: block.content,
       ai_notes: block.ai_notes,

@@ -86,6 +86,7 @@ export async function GET() {
     id: b.id as string,
     brand_context_id: b.brand_context_id as string,
     component_type: b.component_type as string,
+    title: (b.title as string) ?? "",
     user_prompt: (b.user_prompt as string) ?? "",
     content: b.content,
     ai_notes: b.ai_notes,
