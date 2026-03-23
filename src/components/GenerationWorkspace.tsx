@@ -164,6 +164,7 @@ interface GenerationWorkspaceProps {
   ensureContext: () => Promise<BrandContext | null>;
   onGenerate?: () => void;
   isAuthenticated?: boolean;
+  userEmail?: string | null;
   onSyncStatus?: (status: "saving" | "saved" | "error") => void;
   onConfirm?: (message: string, onConfirm: () => void) => void;
 }
@@ -182,6 +183,7 @@ export function GenerationWorkspace({
   ensureContext,
   onGenerate,
   isAuthenticated = false,
+  userEmail,
   onSyncStatus,
   onConfirm,
 }: GenerationWorkspaceProps) {
@@ -609,9 +611,13 @@ export function GenerationWorkspace({
 
   async function handleCopy() {
     if (!currentBlock) return;
-    const doc = currentBlock.content as TipTapDoc;
-    const text = docToPlainText(doc);
-    await navigator.clipboard.writeText(text);
+    if (editorRef.current?.isSourceView()) {
+      const html = editorRef.current?.getHTML();
+      if (html) await navigator.clipboard.writeText(html);
+    } else {
+      const text = docToPlainText(currentBlock.content as TipTapDoc);
+      await navigator.clipboard.writeText(text);
+    }
   }
 
   function handleDownloadMarkdown() {
@@ -977,7 +983,7 @@ export function GenerationWorkspace({
               onClick={handleCopy}
               className="ct-btn ct-btn-secondary text-xs"
             >
-              Copy Text
+              Copy
             </button>
             <button
               onClick={handleDownloadMarkdown}
@@ -1208,24 +1214,70 @@ export function GenerationWorkspace({
       )}
 
       {softLimit && (
-        <div className="mt-4 rounded-[--radius-md] border border-ct-rule bg-ct-cream p-4 text-sm text-ct-muted space-y-2">
-          <p>
-            You&apos;ve hit today&apos;s generation limit. This tool is a free
-            project by <strong>Bit Lore</strong>, a custom web development
-            studio in Portland.
-          </p>
+        <SoftLimitCard userEmail={userEmail} />
+      )}
+
+      {serviceDown && (
+        <ServiceUnavailable onDismiss={() => setServiceDown(false)} />
+      )}
+    </div>
+  );
+}
+
+function SoftLimitCard({ userEmail }: { userEmail?: string | null }) {
+  const [message, setMessage] = useState("");
+  const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!message.trim()) return;
+    setStatus("sending");
+    try {
+      const res = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: userEmail, message: message.trim() }),
+      });
+      if (!res.ok) throw new Error();
+      setStatus("sent");
+    } catch {
+      setStatus("error");
+    }
+  }
+
+  return (
+    <div className="mt-4 rounded-[--radius-md] border border-ct-rule bg-ct-cream p-4 text-sm text-ct-muted space-y-3">
+      <p>
+        You&apos;ve hit today&apos;s generation limit. This tool is a free
+        project by <strong>Bit Lore</strong>, a custom web development
+        studio in Portland.
+      </p>
+      {status === "sent" ? (
+        <p className="text-ct-ink font-medium">Message sent — I&apos;ll be in touch.</p>
+      ) : (
+        <form onSubmit={handleSubmit} className="space-y-2">
           <p>
             If you&apos;re finding this useful, or if you need help building the
-            site this content is going to live on, I&apos;d love to hear from
-            you.
+            site this content is going to live on, I&apos;d love to hear from you.
           </p>
-          <div className="flex items-center gap-3 pt-1">
-            <a
-              href="mailto:hello@bitlore.io"
+          <textarea
+            id="contact-message"
+            name="message"
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
+            placeholder="What are you working on?"
+            maxLength={2000}
+            rows={3}
+            className="ct-input text-sm w-full resize-none"
+          />
+          <div className="flex items-center gap-3">
+            <button
+              type="submit"
+              disabled={!message.trim() || status === "sending"}
               className="ct-btn ct-btn-primary text-xs"
             >
-              Get in touch
-            </a>
+              {status === "sending" ? "Sending…" : "Send"}
+            </button>
             <a
               href="https://bitlore.io"
               className="text-xs text-ct-muted hover:text-ct-ink transition-colors"
@@ -1234,12 +1286,11 @@ export function GenerationWorkspace({
             >
               bitlore.io
             </a>
+            {status === "error" && (
+              <span className="text-xs text-ct-strike">Something went wrong — try again.</span>
+            )}
           </div>
-        </div>
-      )}
-
-      {serviceDown && (
-        <ServiceUnavailable onDismiss={() => setServiceDown(false)} />
+        </form>
       )}
     </div>
   );

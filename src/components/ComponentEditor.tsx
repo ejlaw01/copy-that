@@ -91,6 +91,8 @@ function ToolbarDivider() {
 
 export interface ComponentEditorHandle {
   exitSourceView: () => void;
+  getHTML: () => string | undefined;
+  isSourceView: () => boolean;
 }
 
 interface ComponentEditorProps {
@@ -110,6 +112,8 @@ export const ComponentEditor = forwardRef<ComponentEditorHandle, ComponentEditor
 
   useImperativeHandle(ref, () => ({
     exitSourceView: () => setShowSource(false),
+    getHTML: () => editor?.getHTML(),
+    isSourceView: () => showSource,
   }));
 
   const editor = useEditor({
