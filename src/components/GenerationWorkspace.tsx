@@ -956,6 +956,7 @@ export function GenerationWorkspace({
             maxWords={currentBlock.max_words}
             minWords={currentBlock.min_words}
             maxChars={currentBlock.max_words ? currentBlock.max_words * 6 : undefined}
+            singleLine={CONTENT_CATEGORIES[category]?.singleLine}
           />
 
           {constraintWarning && (

@@ -162,99 +162,76 @@ v3 (site builder) adds structural expansion: `brand_context` renames to `project
 
 ---
 
-## Component Type System
+## Content Category System
 
-Each component type has a schema that defines structure and constraints. The LLM generates content that fits these schemas, and the app validates output programmatically. This is the core of what makes the tool more than a chat wrapper.
+Instead of rigid per-section component types (hero_headline, team_bio, etc.), the tool uses flexible **content categories** organized around writing tasks. The user's prompt communicates the specific context (e.g., "Write an about section for my landscaping business") while the category sets constraints and editor behavior. This covers more use cases — the same "Headline" category works for hero banners, email subject lines, sidebar headers, etc.
 
-### Component Type Registry
+Categories with `singleLine: true` suppress Enter in the TipTap editor, disable block-level nodes (lists, blockquotes, headings), and hide the formatting toolbar — appropriate for short-form copy where line breaks don't make sense.
+
+### Content Category Registry
 
 ```typescript
-interface ComponentConstraint {
-  max_chars?: number;
-  min_chars?: number;
-  structure: 'single_line' | 'paragraph' | 'multi_item';
+interface ContentCategory {
+  label: string;
   guidance: string;
+  default_max_words?: number;
+  default_min_words?: number;
+  singleLine?: boolean;
 }
 
-interface MultiItemConstraint extends ComponentConstraint {
-  structure: 'multi_item';
-  count: number;
-  per_item: Record<string, ComponentConstraint>;
-}
+const CONTENT_CATEGORIES: Record<string, ContentCategory> = {
 
-const COMPONENT_TYPES: Record<string, ComponentConstraint> = {
-
-  hero_headline: {
-    max_chars: 60,
-    structure: 'single_line',
-    guidance: 'Clear, benefit-driven, no jargon. Should immediately communicate what the business does and why it matters.'
+  general: {
+    label: 'General',
+    guidance: 'Flexible copy for any purpose. Follow the user\'s prompt closely.'
   },
 
-  hero_subheadline: {
-    max_chars: 140,
-    structure: 'single_line',
-    guidance: 'Supports the headline with a brief elaboration. Can include a specific proof point or differentiator.'
+  headline: {
+    label: 'Headline',
+    guidance: 'Short, punchy, attention-grabbing. Typically under 80 characters. Clear benefit or hook.',
+    default_max_words: 13,
+    singleLine: true
   },
 
-  value_props: {
-    structure: 'multi_item',
-    count: 3,
-    per_item: {
-      heading: { max_chars: 40, structure: 'single_line', guidance: 'Action-oriented, specific benefit' },
-      body: { max_chars: 120, structure: 'paragraph', guidance: 'One or two sentences expanding on the benefit' }
-    }
+  body_copy: {
+    label: 'Body Copy',
+    guidance: 'Longer-form website copy: about sections, service descriptions, landing page blocks. Authentic and readable.',
+    default_max_words: 250,
+    default_min_words: 30
   },
 
-  about_body: {
-    max_chars: 600,
-    min_chars: 200,
-    structure: 'paragraph',
-    guidance: 'Origin story or mission statement. Should feel personal and authentic, not corporate.'
+  email: {
+    label: 'Email',
+    guidance: 'Email content: subject lines, body copy, CTAs. Conversational, scannable, action-oriented.',
+    default_max_words: 170
   },
 
-  team_bio: {
-    max_chars: 300,
-    structure: 'paragraph',
-    guidance: 'Brief professional bio. Should feel human — include a personal detail or two alongside credentials.'
+  social: {
+    label: 'Social Media',
+    guidance: 'Social media posts and captions. Platform-aware, engaging, concise. Include hooks and calls to action where appropriate.',
+    default_max_words: 50
   },
 
-  service_description: {
-    max_chars: 200,
-    structure: 'paragraph',
-    guidance: 'Clear explanation of one service offering. Focus on what the client gets, not how it works internally.'
+  seo: {
+    label: 'SEO',
+    guidance: 'Search-optimized content: meta titles, descriptions, alt text. Natural keyword integration, compelling click-through copy.',
+    default_max_words: 27,
+    default_min_words: 5,
+    singleLine: true
   },
 
   cta: {
-    structure: 'multi_item',
-    count: 1,
-    per_item: {
-      heading: { max_chars: 50, structure: 'single_line', guidance: 'Creates urgency or invitation' },
-      button_text: { max_chars: 25, structure: 'single_line', guidance: 'Action verb + benefit' },
-      supporting_text: { max_chars: 100, structure: 'single_line', guidance: 'Addresses a potential objection or reinforces the offer' }
-    }
-  },
-
-  meta_title: {
-    max_chars: 60,
-    min_chars: 30,
-    structure: 'single_line',
-    guidance: 'SEO page title. Include primary keyword naturally. Format: Primary Keyword — Brand Name'
-  },
-
-  meta_description: {
-    max_chars: 160,
-    min_chars: 140,
-    structure: 'single_line',
-    guidance: 'SEO meta description. Summarize page content with a compelling reason to click. Include primary keyword.'
-  },
-
-  og_description: {
-    max_chars: 200,
-    structure: 'single_line',
-    guidance: 'Social sharing description. More conversational than meta description. Should make someone want to share or click.'
+    label: 'Call to Action',
+    guidance: 'Conversion-focused copy: button text, banner headlines, urgency messaging. Action verbs, clear value proposition.',
+    default_max_words: 25,
+    singleLine: true
   }
 };
 ```
+
+Word limits are user-editable per block (category defaults are starting points). Constraints are enforced in the generation pipeline with a retry loop (max 2 retries), and the closest-to-valid attempt is returned with a warning if retries are exhausted.
+
+Structured multi-item output (e.g., 3 value props with heading + body pairs) is deferred to v3 alongside structured export to CMS/page builders. In v1, users get multi-item results as formatted text within a single block — the prompt handles the structure.
 
 ---
 
@@ -264,7 +241,7 @@ const COMPONENT_TYPES: Record<string, ComponentConstraint> = {
 
 ### Content Storage Format
 
-For `single_line` and `paragraph` components:
+All content is stored as TipTap JSON documents:
 
 ```json
 {
@@ -275,19 +252,6 @@ For `single_line` and `paragraph` components:
       "content": [
         { "type": "text", "text": "Your headline goes here" }
       ]
-    }
-  ]
-}
-```
-
-For `multi_item` components (like value_props):
-
-```json
-{
-  "items": [
-    {
-      "heading": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Fast turnaround" }] }] },
-      "body": { "type": "doc", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Most projects delivered in under two weeks." }] }] }
     }
   ]
 }
@@ -635,7 +599,7 @@ CREATE POLICY "Authenticated users can insert own usage logs"
 
 ### Security Checklist
 
-**Input validation on all API routes.** Every route that accepts user input (brand context fields, component type selection, URLs) must validate before processing. Validate `component_type` against `Object.keys(COMPONENT_TYPES)` — don't pass arbitrary strings into LLM prompts. Set character limits on all brand context text fields (business_description, tone, audience, tone_examples, competitors) to prevent token-wasting abuse.
+**Input validation on all API routes.** Every route that accepts user input (brand context fields, component type selection, URLs) must validate before processing. Validate `category` against `CATEGORY_KEYS` — don't pass arbitrary strings into LLM prompts. Set character limits on all brand context text fields (business_description, tone, audience, tone_examples, competitors) to prevent token-wasting abuse.
 
 **Prompt injection via brand context.** Users type free text that gets injected into LLM prompts. Someone could enter adversarial instructions as their business description. For this use case the worst outcome is weird copy and wasted API credits, not a data breach. Mitigation: character limits on inputs, `max_tokens` set on every Anthropic API call to cap runaway responses, and validation/retry logic that caps at 2 retries.
 

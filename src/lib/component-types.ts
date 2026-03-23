@@ -3,6 +3,7 @@ export interface ContentCategory {
   guidance: string;
   default_max_words?: number;
   default_min_words?: number;
+  singleLine?: boolean;
 }
 
 export const CONTENT_CATEGORIES: Record<string, ContentCategory> = {
@@ -16,6 +17,7 @@ export const CONTENT_CATEGORIES: Record<string, ContentCategory> = {
     guidance:
       "Short, punchy, attention-grabbing. Typically under 80 characters. Clear benefit or hook.",
     default_max_words: 13,
+    singleLine: true,
   },
   body_copy: {
     label: "Body Copy",
@@ -42,12 +44,14 @@ export const CONTENT_CATEGORIES: Record<string, ContentCategory> = {
       "Search-optimized content: meta titles, descriptions, alt text. Natural keyword integration, compelling click-through copy.",
     default_max_words: 27,
     default_min_words: 5,
+    singleLine: true,
   },
   cta: {
     label: "Call to Action",
     guidance:
       "Conversion-focused copy: button text, banner headlines, urgency messaging. Action verbs, clear value proposition.",
     default_max_words: 25,
+    singleLine: true,
   },
 };
 
