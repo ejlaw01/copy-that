@@ -707,6 +707,7 @@ export default function Home() {
             ensureContext={ensureContext}
             onGenerate={checkSavePrompt}
             isAuthenticated={isAuthenticated}
+            userEmail={userEmail}
             onSyncStatus={(status) => {
               if (status === "saved") {
                 setSyncStatus("saved");
