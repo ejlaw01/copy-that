@@ -740,29 +740,32 @@ export function GenerationWorkspace({
         {documentGroups.map((group) => {
           const isActive = activeDocKey === group.key;
           return (
-            <button
+            <div
               key={group.key}
-              onClick={() => {
-                loadBlock(group.latest);
-                setShowVersions(false);
-              }}
-              className={`shrink-0 rounded-full py-1.5 pl-4 pr-1.5 text-xs transition-colors inline-flex items-center gap-1.5 cursor-pointer ${
+              className={`relative shrink-0 rounded-full text-xs ${
                 isActive
                   ? "bg-ct-ink text-ct-paper"
                   : "bg-ct-cream text-ct-muted hover:bg-ct-rule hover:text-ct-ink"
               }`}
             >
-              <span>
-                <span className="font-medium">{group.title || group.label}</span>
-                {group.title && (
-                  <span className={isActive ? "opacity-60" : "text-ct-rule"}>
-                    {" "}— {group.label}
-                  </span>
-                )}
-              </span>
               <button
-                onClick={(e) => {
-                  e.stopPropagation();
+                onClick={() => {
+                  loadBlock(group.latest);
+                  setShowVersions(false);
+                }}
+                className="py-1.5 pl-4 pr-7 rounded-full transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+              >
+                <span>
+                  <span className="font-medium">{group.title || group.label}</span>
+                  {group.title && (
+                    <span className={isActive ? "opacity-60" : "text-ct-rule"}>
+                      {" "}— {group.label}
+                    </span>
+                  )}
+                </span>
+              </button>
+              <button
+                onClick={() => {
                   const docKey = group.key;
                   if (onConfirm) {
                     onConfirm("Delete this block and all its versions?", () => {
@@ -784,7 +787,7 @@ export function GenerationWorkspace({
                     });
                   }
                 }}
-                className={`flex items-center justify-center w-5 h-5 rounded-full transition-colors cursor-pointer ${
+                className={`absolute right-1 top-1/2 -translate-y-1/2 z-10 flex items-center justify-center w-5 h-5 rounded-full transition-colors cursor-pointer ${
                   isActive
                     ? "text-ct-paper/40 hover:text-ct-strike hover:bg-ct-paper/10"
                     : "text-ct-rule hover:text-ct-strike hover:bg-ct-strike/10"
@@ -795,7 +798,7 @@ export function GenerationWorkspace({
                   <path d="M2 2l6 6M8 2l-6 6" />
                 </svg>
               </button>
-            </button>
+            </div>
           );
         })}
         <button
