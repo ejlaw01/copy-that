@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { Pencil, ChevronDown, Plus } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { AnimatedEllipsis } from "@/components/AnimatedEllipsis";
 import { GenerationWorkspace } from "@/components/GenerationWorkspace";
@@ -105,6 +106,8 @@ export default function Home() {
   const [form, setForm] = useState<Partial<BrandContext>>(emptyForm);
   // Portal target for the document picker rendered by GenerationWorkspace
   const [pickerSlot, setPickerSlot] = useState<HTMLDivElement | null>(null);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
 
   function update(fields: Partial<BrandContext>) {
     setForm((prev) => ({ ...prev, ...fields }));
@@ -506,6 +509,18 @@ export default function Home() {
     }
   }, []);
 
+  // Close profile menu on outside click
+  useEffect(() => {
+    if (!profileMenuOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (profileMenuRef.current && !profileMenuRef.current.contains(e.target as Node)) {
+        setProfileMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [profileMenuOpen]);
+
   // Timer-based save prompt
   useEffect(() => {
     if (isAuthenticated || !activeContext) return;
@@ -641,26 +656,50 @@ export default function Home() {
           <div>
             {/* Row 1 — Profile + details */}
             <div className="flex items-center gap-3 py-3 px-6">
-              <select
-                id="profile-select"
-                name="profile-select"
-                value={activeTab}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  if (val === "new") switchToNew();
-                  else switchToProfile(val);
-                }}
-                className="shrink-0 text-sm font-medium font-ui bg-transparent border border-ct-rule rounded-[--radius-md] py-1.5 pl-3 pr-8 focus:outline-none focus:border-ct-muted cursor-pointer text-ct-ink"
-              >
-                {contexts.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name || "Untitled"}
-                  </option>
-                ))}
-                {contexts.length < MAX_PROFILES && (
-                  <option value="new">+ New Profile</option>
+              <div ref={profileMenuRef} className="relative shrink-0">
+                <button
+                  onClick={() => setProfileMenuOpen((prev) => !prev)}
+                  className="flex items-center gap-1.5 text-base font-semibold font-ui text-ct-ink hover:text-ct-accent transition-colors cursor-pointer"
+                >
+                  {activeContext?.name || (activeTab === "new" ? "New Profile" : "Select Profile")}
+                  <ChevronDown size={14} className={`text-ct-muted transition-transform ${profileMenuOpen ? "rotate-180" : ""}`} />
+                </button>
+                {profileMenuOpen && (
+                  <div className="absolute top-full left-0 mt-1 min-w-[200px] bg-ct-paper border border-ct-rule rounded-[--radius-md] shadow-md z-30 py-1">
+                    {contexts.map((c) => (
+                      <button
+                        key={c.id}
+                        onClick={() => {
+                          switchToProfile(c.id);
+                          setProfileMenuOpen(false);
+                        }}
+                        className={`w-full text-left px-3 py-1.5 text-sm font-ui transition-colors ${
+                          activeTab === c.id
+                            ? "text-ct-ink font-medium bg-ct-cream"
+                            : "text-ct-muted hover:text-ct-ink hover:bg-ct-cream"
+                        }`}
+                      >
+                        {c.name || "Untitled"}
+                      </button>
+                    ))}
+                    {contexts.length < MAX_PROFILES && (
+                      <>
+                        {contexts.length > 0 && <div className="border-t border-ct-rule my-1" />}
+                        <button
+                          onClick={() => {
+                            switchToNew();
+                            setProfileMenuOpen(false);
+                          }}
+                          className="w-full text-left px-3 py-1.5 text-sm font-ui text-ct-muted hover:text-ct-ink hover:bg-ct-cream transition-colors flex items-center gap-1.5"
+                        >
+                          <Plus size={12} />
+                          New Profile
+                        </button>
+                      </>
+                    )}
+                  </div>
                 )}
-              </select>
+              </div>
               {activeContext && !editing && (
                 <>
                   <p className="text-sm text-ct-muted truncate flex-1">
@@ -671,7 +710,7 @@ export default function Home() {
                     className="shrink-0 text-ct-muted hover:text-ct-ink transition-colors"
                     aria-label="Edit profile"
                   >
-                    ✎
+                    <Pencil size={16} />
                   </button>
                 </>
               )}

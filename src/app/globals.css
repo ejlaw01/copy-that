@@ -166,6 +166,7 @@ body {
   border-radius: var(--radius-sm);
   padding: var(--space-3) var(--space-4);
   outline: none;
+  field-sizing: content;
   transition: border-color 0.15s ease-out;
 }
 
@@ -187,10 +188,11 @@ body {
   border: var(--border-hairline);
   border-radius: var(--radius-sm);
   padding: var(--space-4);
-  min-height: 120px;
+  min-height: 3lh;
   resize: vertical;
   outline: none;
   line-height: 1.7;
+  field-sizing: content;
   transition: border-color 0.15s ease-out;
 }
 
