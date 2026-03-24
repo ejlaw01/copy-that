@@ -1,7 +1,11 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
-import { ComponentEditor, type ComponentEditorHandle } from "@/components/ComponentEditor";
+import { createPortal } from "react-dom";
+import {
+  ComponentEditor,
+  type ComponentEditorHandle,
+} from "@/components/ComponentEditor";
 import { Turnstile, type TurnstileHandle } from "@/components/Turnstile";
 import { ServiceUnavailable } from "@/components/ServiceUnavailable";
 import { AnimatedEllipsis } from "@/components/AnimatedEllipsis";
@@ -167,6 +171,10 @@ interface GenerationWorkspaceProps {
   userEmail?: string | null;
   onSyncStatus?: (status: "saving" | "saved" | "error") => void;
   onConfirm?: (message: string, onConfirm: () => void) => void;
+  /** When true, hide the workspace UI but keep mounted for portal/state */
+  hidden?: boolean;
+  /** DOM element where the document picker should be portaled */
+  pickerSlot?: HTMLDivElement | null;
 }
 
 interface AiNotes {
@@ -186,6 +194,8 @@ export function GenerationWorkspace({
   userEmail,
   onSyncStatus,
   onConfirm,
+  hidden = false,
+  pickerSlot,
 }: GenerationWorkspaceProps) {
   const [generating, setGenerating] = useState(false);
   const [canSave, setCanSave] = useState(false);
@@ -232,13 +242,14 @@ export function GenerationWorkspace({
   // Resolve the slug from the hash to a full block ID against current history.
   // "new" is treated as null (show +New form). Falls back to startsWith for
   // legacy blocks that may still be referenced by short UUID prefixes.
-  const resolvedBlockId = blockId === "new"
-    ? null
-    : blockId
-      ? (history.find((b) => b.slug === blockId)?.id
-        ?? history.find((b) => b.id.startsWith(blockId))?.id
-        ?? blockId)
-      : null;
+  const resolvedBlockId =
+    blockId === "new"
+      ? null
+      : blockId
+        ? (history.find((b) => b.slug === blockId)?.id ??
+          history.find((b) => b.id.startsWith(blockId))?.id ??
+          blockId)
+        : null;
 
   const [currentBlock, setCurrentBlock] = useState<CopyBlock | null>(() => {
     if (!context) return null;
@@ -270,17 +281,25 @@ export function GenerationWorkspace({
     const block = getActiveBlockForContext(context.id);
     if (block) return block.max_words;
     const draft = getDraft(context.id);
-    return draft?.max_words ?? CONTENT_CATEGORIES[draft?.category ?? "general"].default_max_words;
+    return (
+      draft?.max_words ??
+      CONTENT_CATEGORIES[draft?.category ?? "general"].default_max_words
+    );
   });
   const [minWords, setMinWords] = useState<number | undefined>(() => {
     if (!context) return CONTENT_CATEGORIES["general"].default_min_words;
     const block = getActiveBlockForContext(context.id);
     if (block) return block.min_words;
     const draft = getDraft(context.id);
-    return draft?.min_words ?? CONTENT_CATEGORIES[draft?.category ?? "general"].default_min_words;
+    return (
+      draft?.min_words ??
+      CONTENT_CATEGORIES[draft?.category ?? "general"].default_min_words
+    );
   });
   const [showConstraints, setShowConstraints] = useState(false);
-  const [constraintWarning, setConstraintWarning] = useState<string | null>(null);
+  const [constraintWarning, setConstraintWarning] = useState<string | null>(
+    null,
+  );
 
   const [feedback, setFeedback] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
@@ -293,14 +312,40 @@ export function GenerationWorkspace({
   // Navigation state is now in the URL hash, but draft text still needs
   // persisting to sessionStorage. We use a ref-to-latest pattern so the
   // handler reads current values without re-registering the listener.
-  const draftRef = useRef({ context, currentBlock, category, userPrompt, maxWords, minWords });
-  draftRef.current = { context, currentBlock, category, userPrompt, maxWords, minWords };
+  const draftRef = useRef({
+    context,
+    currentBlock,
+    category,
+    userPrompt,
+    maxWords,
+    minWords,
+  });
+  draftRef.current = {
+    context,
+    currentBlock,
+    category,
+    userPrompt,
+    maxWords,
+    minWords,
+  };
 
   useEffect(() => {
     function handleBeforeUnload() {
-      const { context: ctx, currentBlock: block, category: cat, userPrompt: prompt, maxWords: max, minWords: min } = draftRef.current;
+      const {
+        context: ctx,
+        currentBlock: block,
+        category: cat,
+        userPrompt: prompt,
+        maxWords: max,
+        minWords: min,
+      } = draftRef.current;
       if (ctx && !block) {
-        saveDraft(ctx.id, { category: cat, user_prompt: prompt, max_words: max, min_words: min });
+        saveDraft(ctx.id, {
+          category: cat,
+          user_prompt: prompt,
+          max_words: max,
+          min_words: min,
+        });
       }
     }
     window.addEventListener("beforeunload", handleBeforeUnload);
@@ -329,7 +374,12 @@ export function GenerationWorkspace({
     // Save draft from the previous context before switching
     const prevId = restoredContextRef.current;
     if (prevId && !currentBlock) {
-      saveDraft(prevId, { category, user_prompt: userPrompt, max_words: maxWords, min_words: minWords });
+      saveDraft(prevId, {
+        category,
+        user_prompt: userPrompt,
+        max_words: maxWords,
+        min_words: minWords,
+      });
     }
 
     if (!context) {
@@ -359,9 +409,10 @@ export function GenerationWorkspace({
     // priority; if null/new, fall back to sessionStorage, then +New.
     let resolvedBlock: CopyBlock | null = null;
     if (blockId && blockId !== "new") {
-      resolvedBlock = blocks.find((b) => b.slug === blockId)
-        ?? blocks.find((b) => b.id.startsWith(blockId))
-        ?? null;
+      resolvedBlock =
+        blocks.find((b) => b.slug === blockId) ??
+        blocks.find((b) => b.id.startsWith(blockId)) ??
+        null;
     }
     if (!resolvedBlock && !blockId) {
       // No block in hash — check sessionStorage fallback
@@ -390,8 +441,12 @@ export function GenerationWorkspace({
       const draftCat = draft?.category ?? "general";
       setCategory(draftCat);
       setUserPrompt(draft?.user_prompt ?? "");
-      setMaxWords(draft?.max_words ?? CONTENT_CATEGORIES[draftCat].default_max_words);
-      setMinWords(draft?.min_words ?? CONTENT_CATEGORIES[draftCat].default_min_words);
+      setMaxWords(
+        draft?.max_words ?? CONTENT_CATEGORIES[draftCat].default_max_words,
+      );
+      setMinWords(
+        draft?.min_words ?? CONTENT_CATEGORIES[draftCat].default_min_words,
+      );
       onBlockChange(null);
     }
     setCanSave(false);
@@ -415,8 +470,12 @@ export function GenerationWorkspace({
       const draftCat = draft?.category ?? "general";
       setCategory(draftCat);
       setUserPrompt(draft?.user_prompt ?? "");
-      setMaxWords(draft?.max_words ?? CONTENT_CATEGORIES[draftCat].default_max_words);
-      setMinWords(draft?.min_words ?? CONTENT_CATEGORIES[draftCat].default_min_words);
+      setMaxWords(
+        draft?.max_words ?? CONTENT_CATEGORIES[draftCat].default_max_words,
+      );
+      setMinWords(
+        draft?.min_words ?? CONTENT_CATEGORIES[draftCat].default_min_words,
+      );
       setFeedback("");
       setCanSave(false);
       setShowVersions(false);
@@ -599,7 +658,12 @@ export function GenerationWorkspace({
 
   function saveDraftIfNeeded() {
     if (!currentBlock && context) {
-      saveDraft(context.id, { category, user_prompt: userPrompt, max_words: maxWords, min_words: minWords });
+      saveDraft(context.id, {
+        category,
+        user_prompt: userPrompt,
+        max_words: maxWords,
+        min_words: minWords,
+      });
     }
   }
 
@@ -643,7 +707,7 @@ export function GenerationWorkspace({
     const newBlock: CopyBlock = {
       ...currentBlock,
       id: crypto.randomUUID(),
-      slug: currentBlock.slug,  // versions share the same URL slug
+      slug: currentBlock.slug, // versions share the same URL slug
       ai_notes: null,
       version: (currentBlock.version ?? 1) + 1,
       created_at: new Date().toISOString(),
@@ -655,7 +719,11 @@ export function GenerationWorkspace({
     setCurrentBlock(newBlock);
     setAiNotes(null);
     setCanSave(false);
+    // Find the previous version of this document (most recent in history with same key)
+    const docKey = getDocumentKey(newBlock);
+    const previousVersion = history.find((b) => getDocumentKey(b) === docKey);
     setHistory((prev) => [newBlock, ...prev]);
+    handleAnalyze(newBlock, previousVersion);
   }
 
   function executeDeleteBlock() {
@@ -693,17 +761,22 @@ export function GenerationWorkspace({
     }
   }
 
-  async function handleAnalyze() {
-    if (!currentBlock || !context) return;
+  async function handleAnalyze(block?: CopyBlock, previousBlock?: CopyBlock) {
+    const target = block ?? currentBlock;
+    if (!target || !context) return;
     setAnalyzing(true);
 
     try {
-      const currentText = docToPlainText(currentBlock.content as TipTapDoc);
+      const currentText = docToPlainText(target.content as TipTapDoc);
+      const previousText = previousBlock
+        ? docToPlainText(previousBlock.content as TipTapDoc)
+        : undefined;
       const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           current_copy: currentText,
+          previous_copy: previousText,
           voice_profile: context.voice_profile,
           business_name: context.business_name,
           user_prompt: userPrompt,
@@ -721,16 +794,128 @@ export function GenerationWorkspace({
       setAiNotes(notes);
 
       // Persist to current block in session storage
-      const updated = { ...currentBlock, ai_notes: notes };
+      const updated = { ...target, ai_notes: notes };
       setCurrentBlock(updated);
       saveCopyBlock(updated);
       syncBlock(updated);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Analysis failed");
+    } catch {
+      // Auto-analyze failures are non-blocking — the save already succeeded
     } finally {
       setAnalyzing(false);
+      turnstileRef.current?.reset();
     }
   }
+
+  // Document picker pills — rendered via portal into the nav bar
+  const documentPicker = (
+    <>
+      {documentGroups.map((group) => {
+        const isActive = activeDocKey === group.key;
+        return (
+          <div
+            key={group.key}
+            className={`relative shrink-0 rounded-t-[4px] text-xs border h-[30px] mt-1 transition-colors ${
+              isActive
+                ? "bg-ct-paper text-ct-ink border-ct-rule border-b-transparent"
+                : "bg-ct-cream text-ct-muted hover:bg-ct-rule hover:text-ct-ink border-transparent border-b-ct-rule"
+            }`}
+          >
+            <button
+              onClick={() => {
+                loadBlock(group.latest);
+                setShowVersions(false);
+              }}
+              className="pl-3 pr-7 h-full rounded-t-[4px] transition-colors inline-flex items-center gap-1.5 cursor-pointer"
+            >
+              <span className="font-medium">{group.title || group.label}</span>
+            </button>
+            <button
+              onClick={() => {
+                const docKey = group.key;
+                if (onConfirm) {
+                  onConfirm("Delete this block and all its versions?", () => {
+                    const toDelete = history.filter(
+                      (b) => getDocumentKey(b) === docKey,
+                    );
+                    const remaining = history.filter(
+                      (b) => getDocumentKey(b) !== docKey,
+                    );
+                    for (const block of toDelete) {
+                      deleteCopyBlock(block.id);
+                      syncDeleteBlock(block.id);
+                    }
+                    setHistory(remaining);
+                    if (isActive) {
+                      setActiveBlock(null);
+                      setCurrentBlock(null);
+                      setAiNotes(null);
+                      setCategory("general");
+                      setUserPrompt("");
+                      setFeedback("");
+                    }
+                  });
+                }
+              }}
+              className={`absolute right-1 top-1/2 -translate-y-1/2 z-10 flex items-center justify-center w-5 h-5 rounded-full transition-colors cursor-pointer ${
+                isActive
+                  ? "text-ct-rule hover:text-ct-strike hover:bg-ct-strike/10"
+                  : "opacity-0 pointer-events-none"
+              }`}
+              aria-label={`Delete ${group.title || group.label}`}
+            >
+              <svg
+                width="10"
+                height="10"
+                viewBox="0 0 10 10"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              >
+                <path d="M2 2l6 6M8 2l-6 6" />
+              </svg>
+            </button>
+          </div>
+        );
+      })}
+      <button
+        onClick={() => {
+          setCurrentBlock(null);
+          setActiveBlock(null);
+          const draft = context ? getDraft(context.id) : null;
+          const draftCat = draft?.category ?? "general";
+          const draftMaxW =
+            draft?.max_words ?? CONTENT_CATEGORIES[draftCat].default_max_words;
+          const draftMinW =
+            draft?.min_words ?? CONTENT_CATEGORIES[draftCat].default_min_words;
+          if (context) {
+            saveDraft(context.id, {
+              category: draftCat,
+              user_prompt: draft?.user_prompt ?? "",
+              max_words: draftMaxW,
+              min_words: draftMinW,
+            });
+          }
+          setCategory(draftCat);
+          setUserPrompt(draft?.user_prompt ?? "");
+          setMaxWords(draftMaxW);
+          setMinWords(draftMinW);
+          setFeedback("");
+          setAiNotes(null);
+          setCanSave(false);
+          setShowVersions(false);
+          setConstraintWarning(null);
+        }}
+        className={`shrink-0 rounded-t-[4px] px-3 text-xs font-ui border h-[30px] mt-1 flex items-center transition-colors ${
+          !currentBlock
+            ? "bg-ct-paper text-ct-ink border-ct-rule border-b-transparent"
+            : "border-dashed border-ct-rule text-ct-muted hover:text-ct-ink hover:border-ct-muted bg-transparent border-b-solid border-b-ct-rule"
+        }`}
+      >
+        + New
+      </button>
+    </>
+  );
 
   return (
     <div>
@@ -741,158 +926,52 @@ export function GenerationWorkspace({
         }}
       />
 
-      {/* Copy Blocks — Document Picker Strip */}
-      <div className="mb-6 flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none border-t border-ct-rule pt-5">
-        {documentGroups.map((group) => {
-          const isActive = activeDocKey === group.key;
-          return (
-            <div
-              key={group.key}
-              className={`relative shrink-0 rounded-full text-xs ${
-                isActive
-                  ? "bg-ct-ink text-ct-paper"
-                  : "bg-ct-cream text-ct-muted hover:bg-ct-rule hover:text-ct-ink"
-              }`}
-            >
-              <button
-                onClick={() => {
-                  loadBlock(group.latest);
-                  setShowVersions(false);
-                }}
-                className="py-1.5 pl-4 pr-7 rounded-full transition-colors inline-flex items-center gap-1.5 cursor-pointer"
-              >
-                <span>
-                  <span className="font-medium">{group.title || group.label}</span>
-                  {group.title && (
-                    <span className={isActive ? "opacity-60" : "text-ct-rule"}>
-                      {" "}— {group.label}
-                    </span>
-                  )}
+      {/* Portal document picker into the nav bar slot */}
+      {pickerSlot && createPortal(documentPicker, pickerSlot)}
+
+      {/* Everything below is hidden when the profile form is open */}
+      {!hidden && (
+        <>
+          {/* Category + Prompt */}
+          <div className="mb-6 pb-6 space-y-4">
+            {!currentBlock && (
+              <div className="flex items-center gap-3">
+                <select
+                  id="category-select"
+                  name="category-select"
+                  value={category}
+                  onChange={(e) => {
+                    const newCat = e.target.value;
+                    setCategory(newCat);
+                    const catInfo = CONTENT_CATEGORIES[newCat];
+                    setMaxWords(catInfo.default_max_words);
+                    setMinWords(catInfo.default_min_words);
+                  }}
+                  className="text-sm font-ui bg-transparent border border-ct-rule rounded-[--radius-md] py-1.5 pl-3 pr-8 focus:outline-none focus:border-ct-muted cursor-pointer text-ct-ink"
+                >
+                  {CATEGORY_KEYS.map((key) => (
+                    <option key={key} value={key}>
+                      {CONTENT_CATEGORIES[key].label}
+                    </option>
+                  ))}
+                </select>
+                <span className="text-xs text-ct-muted flex-1 truncate">
+                  {CONTENT_CATEGORIES[category].guidance}
                 </span>
-              </button>
-              <button
-                onClick={() => {
-                  const docKey = group.key;
-                  if (onConfirm) {
-                    onConfirm("Delete this block and all its versions?", () => {
-                      const toDelete = history.filter((b) => getDocumentKey(b) === docKey);
-                      const remaining = history.filter((b) => getDocumentKey(b) !== docKey);
-                      for (const block of toDelete) {
-                        deleteCopyBlock(block.id);
-                        syncDeleteBlock(block.id);
-                      }
-                      setHistory(remaining);
-                      if (isActive) {
-                        setActiveBlock(null);
-                        setCurrentBlock(null);
-                        setAiNotes(null);
-                        setCategory("general");
-                        setUserPrompt("");
-                        setFeedback("");
-                      }
-                    });
-                  }
-                }}
-                className={`absolute right-1 top-1/2 -translate-y-1/2 z-10 flex items-center justify-center w-5 h-5 rounded-full transition-colors cursor-pointer ${
-                  isActive
-                    ? "text-ct-paper/40 hover:text-ct-strike hover:bg-ct-paper/10"
-                    : "text-ct-rule hover:text-ct-strike hover:bg-ct-strike/10"
-                }`}
-                aria-label={`Delete ${group.title || group.label}`}
-              >
-                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round">
-                  <path d="M2 2l6 6M8 2l-6 6" />
-                </svg>
-              </button>
-            </div>
-          );
-        })}
-        <button
-          onClick={() => {
-            // setActiveBlock(null) writes the "__new__" sentinel to
-            // sessionStorage synchronously — this is what survives refresh.
-            // We also save the draft eagerly so the form values are current
-            // even if beforeunload fires before React re-renders the ref.
-            setCurrentBlock(null);
-            setActiveBlock(null);
-            const draft = context ? getDraft(context.id) : null;
-            const draftCat = draft?.category ?? "general";
-            const draftMaxW = draft?.max_words ?? CONTENT_CATEGORIES[draftCat].default_max_words;
-            const draftMinW = draft?.min_words ?? CONTENT_CATEGORIES[draftCat].default_min_words;
-            if (context) {
-              saveDraft(context.id, { category: draftCat, user_prompt: draft?.user_prompt ?? "", max_words: draftMaxW, min_words: draftMinW });
-            }
-            setCategory(draftCat);
-            setUserPrompt(draft?.user_prompt ?? "");
-            setMaxWords(draftMaxW);
-            setMinWords(draftMinW);
-            setFeedback("");
-            setAiNotes(null);
-            setCanSave(false);
-            setShowVersions(false);
-            setConstraintWarning(null);
-          }}
-          className={`shrink-0 rounded-full px-4 py-1.5 text-xs font-ui transition-colors ${
-            !currentBlock
-              ? "bg-ct-ink text-ct-paper"
-              : "border border-dashed border-ct-rule text-ct-muted hover:text-ct-ink hover:border-ct-muted"
-          }`}
-        >
-          + New
-        </button>
-      </div>
+                {/* Constraints toggle */}
+                <button
+                  onClick={() => setShowConstraints((prev) => !prev)}
+                  className={`shrink-0 text-xs transition-colors ${showConstraints ? "text-ct-ink" : "text-ct-rule hover:text-ct-muted"}`}
+                  aria-label="Word constraints"
+                  title="Word constraints"
+                >
+                  ⚙
+                </button>
+              </div>
+            )}
 
-      {/* Category + Prompt */}
-      <div className="mb-6 space-y-5 border-t border-ct-rule pt-5">
-        {!currentBlock && (
-          <div>
-            <label className="ct-label">
-              Category
-            </label>
-            <select
-              value={category}
-              onChange={(e) => {
-                const newCat = e.target.value;
-                setCategory(newCat);
-                // Sync constraint defaults when category changes
-                const catInfo = CONTENT_CATEGORIES[newCat];
-                setMaxWords(catInfo.default_max_words);
-                setMinWords(catInfo.default_min_words);
-              }}
-              className="ct-input"
-            >
-              {CATEGORY_KEYS.map((key) => (
-                <option key={key} value={key}>
-                  {CONTENT_CATEGORIES[key].label}
-                </option>
-              ))}
-            </select>
-            <p className="mt-1.5 text-xs text-ct-muted">
-              {CONTENT_CATEGORIES[category].guidance}
-            </p>
-
-            {/* Constraints — collapsible section for word limits */}
-            <button
-              onClick={() => setShowConstraints((prev) => !prev)}
-              className="mt-3 text-xs text-ct-muted hover:text-ct-ink transition-colors"
-            >
-              Constraints {showConstraints ? "▼" : "▶"}
-            </button>
-            {showConstraints && (
-              <div className="mt-2 flex items-center gap-4">
-                <label className="flex items-center gap-1.5 text-xs text-ct-muted">
-                  Max words
-                  <input
-                    id="max-words"
-                    name="max-words"
-                    type="number"
-                    min={1}
-                    value={maxWords ?? ""}
-                    onChange={(e) => setMaxWords(e.target.value ? Number(e.target.value) : undefined)}
-                    className="ct-input w-20 py-1 text-xs"
-                    placeholder="—"
-                  />
-                </label>
+            {!currentBlock && showConstraints && (
+              <div className="flex items-center gap-4">
                 <label className="flex items-center gap-1.5 text-xs text-ct-muted">
                   Min words
                   <input
@@ -901,324 +980,339 @@ export function GenerationWorkspace({
                     type="number"
                     min={1}
                     value={minWords ?? ""}
-                    onChange={(e) => setMinWords(e.target.value ? Number(e.target.value) : undefined)}
+                    onChange={(e) =>
+                      setMinWords(
+                        e.target.value ? Number(e.target.value) : undefined,
+                      )
+                    }
+                    className="ct-input w-20 py-1 text-xs"
+                    placeholder="—"
+                  />
+                </label>
+                <label className="flex items-center gap-1.5 text-xs text-ct-muted">
+                  Max words
+                  <input
+                    id="max-words"
+                    name="max-words"
+                    type="number"
+                    min={1}
+                    value={maxWords ?? ""}
+                    onChange={(e) =>
+                      setMaxWords(
+                        e.target.value ? Number(e.target.value) : undefined,
+                      )
+                    }
                     className="ct-input w-20 py-1 text-xs"
                     placeholder="—"
                   />
                 </label>
               </div>
             )}
-          </div>
-        )}
 
-        <div>
-          <label className="ct-label">
-            Prompt
-          </label>
-          {currentBlock ? (
-            <p className="text-sm text-ct-muted">{userPrompt}</p>
-          ) : (
-            <textarea
-              id="user-prompt"
-              name="user-prompt"
-              value={userPrompt}
-              onChange={(e) => setUserPrompt(e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder='What do you need? e.g., "Write a hero headline that emphasizes our fast turnaround"'
-              rows={3}
-              maxLength={1000}
-              className="ct-input resize-none"
-            />
-          )}
-        </div>
-
-        {!currentBlock && (
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-ct-muted">
-              {typeof navigator !== "undefined" &&
-              navigator.platform?.includes("Mac")
-                ? "⌘"
-                : "Ctrl"}
-              +Enter to generate
-            </span>
-            <button
-              onClick={handleGenerate}
-              disabled={generating || !userPrompt.trim() || !canGenerate}
-              className="ct-btn ct-btn-primary"
-            >
-              {generating ? <>Generating<AnimatedEllipsis /></> : "Generate"}
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Output — Editor (full width) */}
-      {currentBlock && (
-        <div className="space-y-4">
-          <ComponentEditor
-            ref={editorRef}
-            content={currentBlock.content as TipTapDoc}
-            onChange={handleContentChange}
-            maxWords={currentBlock.max_words}
-            minWords={currentBlock.min_words}
-            maxChars={currentBlock.max_words ? currentBlock.max_words * 6 : undefined}
-            singleLine={CONTENT_CATEGORIES[category]?.singleLine}
-          />
-
-          {constraintWarning && (
-            <div className="flex items-center justify-between rounded-[--radius-md] border border-ct-highlight/30 bg-ct-highlight/10 px-3 py-2 text-xs text-ct-highlight">
-              <span>{constraintWarning}</span>
-              <button
-                onClick={() => setConstraintWarning(null)}
-                className="ml-2 text-ct-highlight/60 hover:text-ct-highlight transition-colors"
-              >
-                dismiss
-              </button>
-            </div>
-          )}
-
-          {/* Actions */}
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleCopy}
-              className="ct-btn ct-btn-secondary text-xs"
-            >
-              Copy
-            </button>
-            <button
-              onClick={handleDownloadMarkdown}
-              className="ct-btn ct-btn-secondary text-xs"
-            >
-              Download .md
-            </button>
-            <button
-              onClick={handleSaveVersion}
-              disabled={!canSave}
-              className="ml-auto ct-btn ct-btn-secondary text-xs"
-            >
-              Save Version
-            </button>
-          </div>
-
-          {/* Version History */}
-          {activeGroup && (
             <div>
-              <button
-                onClick={() => setShowVersions(!showVersions)}
-                className="text-xs text-ct-muted hover:text-ct-ink transition-colors"
-              >
-                Version {activeGroup.versions.length - activeVersionIndex} of{" "}
-                {activeGroup.versions.length} {showVersions ? "▼" : "▶"}
-              </button>
-              {showVersions && (
-                <div className="mt-2 space-y-1">
-                  {activeGroup.versions.map((version, i) => {
-                    const versionNum = activeGroup.versions.length - i;
-                    const prevVersion = activeGroup.versions[i + 1];
-                    const currentText = docToPlainText(
-                      version.content as TipTapDoc,
-                    );
-                    const hasDiff = !!prevVersion;
-                    const spans = hasDiff
-                      ? diffWords(
-                          docToPlainText(prevVersion.content as TipTapDoc),
-                          currentText,
-                        )
-                      : [{ type: "same" as const, text: currentText }];
+              {currentBlock ? (
+                <p className="text-sm text-ct-muted">{userPrompt}</p>
+              ) : (
+                <textarea
+                  id="user-prompt"
+                  name="user-prompt"
+                  value={userPrompt}
+                  onChange={(e) => setUserPrompt(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder='What do you need? e.g., "Write a hero headline that emphasizes our fast turnaround"'
+                  rows={3}
+                  maxLength={1000}
+                  className="ct-input resize-none"
+                />
+              )}
+            </div>
 
-                    // Split spans into lines for preview truncation
-                    const allLines: Array<{ spans: DiffSpan[] }> = [
-                      { spans: [] },
-                    ];
-                    for (const span of spans) {
-                      const parts = span.text.split("\n");
-                      for (let p = 0; p < parts.length; p++) {
-                        if (p > 0) allLines.push({ spans: [] });
-                        if (parts[p]) {
-                          allLines[allLines.length - 1].spans.push({
-                            type: span.type,
-                            text: parts[p],
-                          });
+            {!currentBlock && (
+              <div className="flex items-center justify-end">
+                <button
+                  onClick={handleGenerate}
+                  disabled={generating || !userPrompt.trim() || !canGenerate}
+                  className="ct-btn ct-btn-primary"
+                >
+                  {generating ? (
+                    <>
+                      Generating
+                      <AnimatedEllipsis />
+                    </>
+                  ) : (
+                    "Generate"
+                  )}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Output — Editor (full width) */}
+          {currentBlock && (
+            <div className="space-y-4">
+              <ComponentEditor
+                ref={editorRef}
+                content={currentBlock.content as TipTapDoc}
+                onChange={handleContentChange}
+                maxWords={currentBlock.max_words}
+                minWords={currentBlock.min_words}
+                maxChars={
+                  currentBlock.max_words
+                    ? currentBlock.max_words * 6
+                    : undefined
+                }
+                singleLine={CONTENT_CATEGORIES[category]?.singleLine}
+              />
+
+              {constraintWarning && (
+                <div className="flex items-center justify-between rounded-[--radius-md] border border-ct-highlight/30 bg-ct-highlight/10 px-3 py-2 text-xs text-ct-highlight">
+                  <span>{constraintWarning}</span>
+                  <button
+                    onClick={() => setConstraintWarning(null)}
+                    className="ml-2 text-ct-highlight/60 hover:text-ct-highlight transition-colors"
+                  >
+                    dismiss
+                  </button>
+                </div>
+              )}
+
+              {/* Actions — ghost-style links */}
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={handleCopy}
+                  className="text-xs font-ui text-ct-muted hover:text-ct-ink transition-colors"
+                >
+                  Copy
+                </button>
+                <button
+                  onClick={handleDownloadMarkdown}
+                  className="text-xs font-ui text-ct-muted hover:text-ct-ink transition-colors"
+                >
+                  Download .md
+                </button>
+                <button
+                  onClick={handleSaveVersion}
+                  disabled={!canSave}
+                  className="ml-auto text-xs font-ui text-ct-muted hover:text-ct-ink transition-colors disabled:opacity-40"
+                >
+                  Save Version
+                </button>
+              </div>
+
+              {/* Version History */}
+              {activeGroup && (
+                <div>
+                  <button
+                    onClick={() => setShowVersions(!showVersions)}
+                    className="text-xs text-ct-muted hover:text-ct-ink transition-colors"
+                  >
+                    Version {activeGroup.versions.length - activeVersionIndex}{" "}
+                    of {activeGroup.versions.length} {showVersions ? "▼" : "▶"}
+                  </button>
+                  {showVersions && (
+                    <div className="mt-2 space-y-1">
+                      {activeGroup.versions.map((version, i) => {
+                        const versionNum = activeGroup.versions.length - i;
+                        const prevVersion = activeGroup.versions[i + 1];
+                        const currentText = docToPlainText(
+                          version.content as TipTapDoc,
+                        );
+                        const hasDiff = !!prevVersion;
+                        const spans = hasDiff
+                          ? diffWords(
+                              docToPlainText(prevVersion.content as TipTapDoc),
+                              currentText,
+                            )
+                          : [{ type: "same" as const, text: currentText }];
+
+                        // Split spans into lines for preview truncation
+                        const allLines: Array<{ spans: DiffSpan[] }> = [
+                          { spans: [] },
+                        ];
+                        for (const span of spans) {
+                          const parts = span.text.split("\n");
+                          for (let p = 0; p < parts.length; p++) {
+                            if (p > 0) allLines.push({ spans: [] });
+                            if (parts[p]) {
+                              allLines[allLines.length - 1].spans.push({
+                                type: span.type,
+                                text: parts[p],
+                              });
+                            }
+                          }
                         }
-                      }
-                    }
-                    const nonEmptyLines = allLines.filter((l) =>
-                      l.spans.some((s) => s.text.trim().length > 0),
-                    );
+                        const nonEmptyLines = allLines.filter((l) =>
+                          l.spans.some((s) => s.text.trim().length > 0),
+                        );
 
-                    const isExpanded = expandedVersions.has(version.id);
-                    const hasMore = nonEmptyLines.length > 3;
-                    const visibleLines = isExpanded
-                      ? nonEmptyLines
-                      : nonEmptyLines.slice(0, 3);
+                        const isExpanded = expandedVersions.has(version.id);
+                        const hasMore = nonEmptyLines.length > 3;
+                        const visibleLines = isExpanded
+                          ? nonEmptyLines
+                          : nonEmptyLines.slice(0, 3);
 
-                    return (
-                      <div
-                        key={version.id}
-                        onClick={() => loadBlock(version, { markDirty: true })}
-                        className={`rounded-[--radius-md] px-3 py-2 text-xs transition-colors cursor-pointer no-underline ${
-                          currentBlock?.id === version.id
-                            ? "bg-ct-cream text-ct-ink"
-                            : "text-ct-muted hover:bg-ct-cream"
-                        }`}
-                      >
-                        <div>
-                          <span className="font-medium">
-                            Version {versionNum}
-                          </span>
-                          <span className="text-ct-muted ml-2">
-                            {relativeTime(version.created_at)}
-                          </span>
-                        </div>
-                        <div className="mt-0.5">
-                          {visibleLines.length === 0 && (
-                            <span className="text-ct-muted">(empty)</span>
-                          )}
-                          {visibleLines.map((line, li) => (
-                            <div key={li} className="text-ct-muted">
-                              {line.spans.map((s, si) =>
-                                s.type === "added" ? (
-                                  <span
-                                    key={si}
-                                    className="bg-ct-positive-bg text-ct-positive"
-                                  >
-                                    {s.text}
-                                  </span>
-                                ) : s.type === "removed" ? (
-                                  <span
-                                    key={si}
-                                    className="bg-ct-strike-bg text-ct-strike line-through"
-                                  >
-                                    {s.text}
-                                  </span>
-                                ) : (
-                                  <span key={si}>{s.text}</span>
-                                ),
+                        return (
+                          <div
+                            key={version.id}
+                            onClick={() =>
+                              loadBlock(version, { markDirty: true })
+                            }
+                            className={`rounded-[--radius-md] px-3 py-2 text-xs transition-colors cursor-pointer no-underline ${
+                              currentBlock?.id === version.id
+                                ? "bg-ct-cream text-ct-ink"
+                                : "text-ct-muted hover:bg-ct-cream"
+                            }`}
+                          >
+                            <div>
+                              <span className="font-medium">
+                                Version {versionNum}
+                              </span>
+                              <span className="text-ct-muted ml-2">
+                                {relativeTime(version.created_at)}
+                              </span>
+                            </div>
+                            <div className="mt-0.5">
+                              {visibleLines.length === 0 && (
+                                <span className="text-ct-muted">(empty)</span>
+                              )}
+                              {visibleLines.map((line, li) => (
+                                <div key={li} className="text-ct-muted">
+                                  {line.spans.map((s, si) =>
+                                    s.type === "added" ? (
+                                      <span
+                                        key={si}
+                                        className="bg-ct-positive-bg text-ct-positive"
+                                      >
+                                        {s.text}
+                                      </span>
+                                    ) : s.type === "removed" ? (
+                                      <span
+                                        key={si}
+                                        className="bg-ct-strike-bg text-ct-strike line-through"
+                                      >
+                                        {s.text}
+                                      </span>
+                                    ) : (
+                                      <span key={si}>{s.text}</span>
+                                    ),
+                                  )}
+                                </div>
+                              ))}
+                              {hasMore && !isExpanded && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setExpandedVersions((prev) => {
+                                      const next = new Set(prev);
+                                      next.add(version.id);
+                                      return next;
+                                    });
+                                  }}
+                                  className="text-ct-muted hover:text-ct-muted transition-colors"
+                                >
+                                  ...
+                                </button>
+                              )}
+                              {hasMore && isExpanded && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setExpandedVersions((prev) => {
+                                      const next = new Set(prev);
+                                      next.delete(version.id);
+                                      return next;
+                                    });
+                                  }}
+                                  className="block text-ct-muted hover:text-ct-muted transition-colors mt-0.5"
+                                >
+                                  show less
+                                </button>
                               )}
                             </div>
-                          ))}
-                          {hasMore && !isExpanded && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setExpandedVersions((prev) => {
-                                  const next = new Set(prev);
-                                  next.add(version.id);
-                                  return next;
-                                });
-                              }}
-                              className="text-ct-muted hover:text-ct-muted transition-colors"
-                            >
-                              ...
-                            </button>
-                          )}
-                          {hasMore && isExpanded && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setExpandedVersions((prev) => {
-                                  const next = new Set(prev);
-                                  next.delete(version.id);
-                                  return next;
-                                });
-                              }}
-                              className="block text-ct-muted hover:text-ct-muted transition-colors mt-0.5"
-                            >
-                              show less
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           )}
-        </div>
-      )}
 
-      {/* AI area — notes + adjustments */}
-      {currentBlock && (
-        <div className="mt-6 rounded-[--radius-md] bg-ct-cream p-4 space-y-4">
-          {/* Analysis */}
-          {aiNotes?.generation_reasoning ? (
-            <div>
-              <label className="ct-label">
-                Analysis
-              </label>
-              <div className="text-xs text-ct-ink space-y-2">
-                <p>{aiNotes.generation_reasoning}</p>
-                {aiNotes.suggestions && aiNotes.suggestions.length > 0 && (
-                  <div>
-                    <p className="font-medium text-ct-ink mb-1">
-                      Suggestions:
-                    </p>
-                    <ul className="list-disc list-inside space-y-0.5">
-                      {aiNotes.suggestions.map((s, i) => (
-                        <li key={i}>{s}</li>
-                      ))}
-                    </ul>
+          {/* AI area — notes + adjustments */}
+          {currentBlock && (
+            <div className="mt-6 rounded-[--radius-md] bg-ct-cream p-4 space-y-4">
+              {/* Analysis */}
+              {analyzing ? (
+                <p className="text-xs text-ct-muted">
+                  Analyzing
+                  <AnimatedEllipsis />
+                </p>
+              ) : aiNotes?.generation_reasoning ? (
+                <div>
+                  <label className="ct-label">Analysis</label>
+                  <div className="text-xs text-ct-ink space-y-2">
+                    <p>{aiNotes.generation_reasoning}</p>
+                    {aiNotes.suggestions && aiNotes.suggestions.length > 0 && (
+                      <div>
+                        <p className="font-medium text-ct-ink mb-1">
+                          Suggestions:
+                        </p>
+                        <ul className="list-disc list-inside space-y-0.5">
+                          {aiNotes.suggestions.map((s, i) => (
+                            <li key={i}>{s}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
+              ) : null}
+
+              {/* Adjustments */}
+              <div>
+                <label className="ct-label">Adjustments</label>
+                <textarea
+                  id="feedback-prompt"
+                  name="feedback-prompt"
+                  value={feedback}
+                  onChange={(e) => setFeedback(e.target.value)}
+                  onKeyDown={handleFeedbackKeyDown}
+                  placeholder='e.g., "Make it shorter", "More casual tone", "Emphasize the guarantee"'
+                  rows={2}
+                  maxLength={1000}
+                  className="ct-input resize-none"
+                />
+                <div className="flex items-center justify-end mt-1.5">
+                  <button
+                    onClick={handleGenerate}
+                    disabled={generating || !feedback.trim() || !canGenerate}
+                    className="ct-btn ct-btn-primary"
+                  >
+                    {generating ? (
+                      <>
+                        Working
+                        <AnimatedEllipsis />
+                      </>
+                    ) : (
+                      "Apply"
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
-          ) : (
-            <button
-              onClick={handleAnalyze}
-              disabled={analyzing}
-              className="ct-btn ct-btn-secondary text-xs"
-            >
-              {analyzing ? <>Analyzing<AnimatedEllipsis /></> : "Get Feedback"}
-            </button>
           )}
 
-          {/* Adjustments */}
-          <div>
-            <label className="ct-label">
-              Adjustments
-            </label>
-            <textarea
-              id="feedback-prompt"
-              name="feedback-prompt"
-              value={feedback}
-              onChange={(e) => setFeedback(e.target.value)}
-              onKeyDown={handleFeedbackKeyDown}
-              placeholder='e.g., "Make it shorter", "More casual tone", "Emphasize the guarantee"'
-              rows={2}
-              maxLength={1000}
-              className="ct-input resize-none"
-            />
-            <div className="flex items-center justify-between mt-1.5">
-              <span className="text-xs text-ct-muted">
-                {typeof navigator !== "undefined" &&
-                navigator.platform?.includes("Mac")
-                  ? "⌘"
-                  : "Ctrl"}
-                +Enter to regenerate
-              </span>
-              <button
-                onClick={handleGenerate}
-                disabled={generating || !feedback.trim() || !canGenerate}
-                className="ct-btn ct-btn-primary"
-              >
-                {generating ? <>Working<AnimatedEllipsis /></> : "Apply"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          {error && !softLimit && (
+            <p className="mt-3 text-sm text-ct-strike">{error}</p>
+          )}
 
-      {error && !softLimit && (
-        <p className="mt-3 text-sm text-ct-strike">{error}</p>
-      )}
+          {softLimit && <SoftLimitCard userEmail={userEmail} />}
 
-      {softLimit && (
-        <SoftLimitCard userEmail={userEmail} />
-      )}
-
-      {serviceDown && (
-        <ServiceUnavailable onDismiss={() => setServiceDown(false)} />
+          {serviceDown && (
+            <ServiceUnavailable onDismiss={() => setServiceDown(false)} />
+          )}
+        </>
       )}
     </div>
   );
@@ -1226,7 +1320,9 @@ export function GenerationWorkspace({
 
 function SoftLimitCard({ userEmail }: { userEmail?: string | null }) {
   const [message, setMessage] = useState("");
-  const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [status, setStatus] = useState<"idle" | "sending" | "sent" | "error">(
+    "idle",
+  );
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -1249,16 +1345,19 @@ function SoftLimitCard({ userEmail }: { userEmail?: string | null }) {
     <div className="mt-4 rounded-[--radius-md] border border-ct-rule bg-ct-cream p-4 text-sm text-ct-muted space-y-3">
       <p>
         You&apos;ve hit today&apos;s generation limit. This tool is a free
-        project by <strong>Bit Lore</strong>, a custom web development
-        studio in Portland.
+        project by <strong>Bit Lore</strong>, a custom web development studio in
+        Portland.
       </p>
       {status === "sent" ? (
-        <p className="text-ct-ink font-medium">Message sent — I&apos;ll be in touch.</p>
+        <p className="text-ct-ink font-medium">
+          Message sent — I&apos;ll be in touch.
+        </p>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-2">
           <p>
             If you&apos;re finding this useful, or if you need help building the
-            site this content is going to live on, I&apos;d love to hear from you.
+            site this content is going to live on, I&apos;d love to hear from
+            you.
           </p>
           <textarea
             id="contact-message"
@@ -1287,7 +1386,9 @@ function SoftLimitCard({ userEmail }: { userEmail?: string | null }) {
               bitlore.io
             </a>
             {status === "error" && (
-              <span className="text-xs text-ct-strike">Something went wrong — try again.</span>
+              <span className="text-xs text-ct-strike">
+                Something went wrong — try again.
+              </span>
             )}
           </div>
         </form>

@@ -99,10 +99,12 @@ export default function Home() {
     });
   }
 
-  // Profile panel state
-  const [brandOpen, setBrandOpen] = useState(true);
-  const [editing, setEditing] = useState(true); // true = form mode, false = read-only
+  // Profile panel state — no collapsible panel in new design;
+  // `editing` alone drives form vs compact summary.
+  const [editing, setEditing] = useState(true);
   const [form, setForm] = useState<Partial<BrandContext>>(emptyForm);
+  // Portal target for the document picker rendered by GenerationWorkspace
+  const [pickerSlot, setPickerSlot] = useState<HTMLDivElement | null>(null);
 
   function update(fields: Partial<BrandContext>) {
     setForm((prev) => ({ ...prev, ...fields }));
@@ -120,11 +122,10 @@ export default function Home() {
     ? contexts.find((c) => c.id === activeTab) ?? null
     : null;
 
-  // Helper: apply panel state for a profile switch (form, brandOpen, editing).
+  // Helper: apply panel state for a profile switch.
   // Extracted so both switchToProfile and bootstrap can reuse it.
   function applyProfilePanel(ctx: BrandContext) {
     setForm(ctx);
-    setBrandOpen(false);
     setEditing(false);
   }
 
@@ -142,7 +143,6 @@ export default function Home() {
     if (contexts.length >= MAX_PROFILES) return;
     navigate("new");
     setForm(emptyForm());
-    setBrandOpen(true);
     setEditing(true);
   }
 
@@ -162,14 +162,60 @@ export default function Home() {
       } else {
         navigate("new");
         setForm(emptyForm());
-        setBrandOpen(true);
         setEditing(true);
       }
     }
   }
 
-  // Save a new profile without generating a voice profile.
-  // The voice profile is created lazily on first generation via ensureContext().
+  // Fire-and-forget voice profile generation. Calls /api/voice, then
+  // patches the context in React state, sessionStorage, and Supabase.
+  // If it fails, ensureContext() still acts as a lazy fallback before generation.
+  function generateVoiceProfile(ctx: BrandContext) {
+    (async () => {
+      try {
+        // Extract source URL content first if provided
+        if (ctx.source_url) {
+          try {
+            const res = await fetch("/api/extract", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ url: ctx.source_url, type: "source" }),
+            });
+            if (res.ok) {
+              ctx = { ...ctx, source_content: await res.json() };
+            }
+          } catch {
+            // Non-blocking — voice generation works without source content
+          }
+        }
+
+        const res = await fetch("/api/voice", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(ctx),
+        });
+        if (!res.ok) return;
+        const { voice_profile } = await res.json();
+        const patched = { ...ctx, voice_profile };
+
+        // Persist to sessionStorage + Supabase
+        const syncPromise = saveBrandContextWithSync(patched, isAuthenticatedRef.current);
+        if (isAuthenticatedRef.current) withSync(() => syncPromise);
+
+        // Patch React state — only if this context is still around
+        setContexts((prev) =>
+          prev.map((c) => (c.id === patched.id ? patched : c)),
+        );
+        setForm((prev) =>
+          prev.id === patched.id ? { ...prev, voice_profile } : prev,
+        );
+      } catch {
+        // Silent — lazy fallback in ensureContext() covers this
+      }
+    })();
+  }
+
+  // Save a new profile, then kick off voice generation in the background.
   function handleSaveNew() {
     if (!form.name) return;
     const slug = uniqueSlug(
@@ -183,21 +229,33 @@ export default function Home() {
     setContexts((prev) => [...prev, ctx]);
     navigate(ctx.slug);
     setActiveContext(ctx.id);
-    setBrandOpen(false);
     setEditing(false);
     setSessionIndicator(true);
+
+    // Fire-and-forget — voice profile appears when ready
+    generateVoiceProfile(ctx);
   }
 
-  // Save edits to an existing profile (re-generate voice profile)
-  async function handleSaveEdits() {
+  // Save edits to an existing profile.
+  // If the user manually edited the voice profile text, keep it as-is.
+  // If they changed brand inputs but left the voice profile untouched, regenerate.
+  function handleSaveEdits() {
     if (!activeContext) return;
     const updated = { ...activeContext, ...form } as BrandContext;
-    // Clear voice profile so it regenerates on next generate
-    updated.voice_profile = "";
+
+    // Detect whether the user edited the voice profile text directly
+    const voiceManuallyEdited =
+      form.voice_profile !== activeContext.voice_profile;
+
     const syncPromise = saveBrandContextWithSync(updated, isAuthenticated);
     if (isAuthenticated) withSync(() => syncPromise);
     setContexts((prev) => prev.map((c) => c.id === updated.id ? updated : c));
     setEditing(false);
+
+    // If brand inputs changed but voice profile wasn't hand-edited, regenerate
+    if (!voiceManuallyEdited && updated.voice_profile) {
+      generateVoiceProfile(updated);
+    }
   }
 
   // Helper: hydrate React state from a session-shaped object.
@@ -250,7 +308,6 @@ export default function Home() {
     replace(active.slug);
     setActiveContext(active.id);
     setForm(active);
-    setBrandOpen(false);
     setEditing(false);
     setSessionIndicator(true);
   }
@@ -327,6 +384,11 @@ export default function Home() {
           isAuthenticatedRef.current = true;
           setShowSavePrompt(false);
 
+          // Skip re-hydration if we've already set up for this user.
+          // Supabase fires SIGNED_IN on token refresh (e.g. tab regains
+          // focus), which would wipe the block hash and reset the view.
+          if (getSessionUserId() === session.user.id) return;
+
           // Fetch server data first to decide whether migration is needed.
           // On re-sign-in the user already has data in Supabase — migrating
           // stale sessionStorage would INSERT duplicates (migrate uses INSERT,
@@ -385,7 +447,6 @@ export default function Home() {
           setContexts([]);
           replace("new");
           setForm(emptyForm());
-          setBrandOpen(true);
           setEditing(true);
         }
       }
@@ -418,7 +479,6 @@ export default function Home() {
     } else if (route.profileId === "new") {
       // Explicit #/new — make sure form is in new-profile mode
       setForm(emptyForm());
-      setBrandOpen(true);
       setEditing(true);
     } else {
       // Hash has a profile ID — validate it resolved to a real context
@@ -430,7 +490,6 @@ export default function Home() {
       } else {
         replace("new");
         setForm(emptyForm());
-        setBrandOpen(true);
         setEditing(true);
       }
     }
@@ -524,7 +583,6 @@ export default function Home() {
     navigate(ctx.slug);
     setActiveContext(ctx.id);
     setForm(ctx);
-    setBrandOpen(false);
     setEditing(false);
     setSessionIndicator(true);
 
@@ -557,7 +615,13 @@ export default function Home() {
             <span className="text-xs text-ct-strike">Sync failed</span>
           )}
           {userEmail ? (
-            <span className="text-xs text-ct-muted">{userEmail}</span>
+            userEmail === process.env.NEXT_PUBLIC_ADMIN_EMAIL ? (
+              <a href="/admin" className="text-xs text-ct-muted hover:text-ct-ink transition-colors">
+                {userEmail}
+              </a>
+            ) : (
+              <span className="text-xs text-ct-muted">{userEmail}</span>
+            )
           ) : authChecked && (
             <button
               onClick={() => setShowSavePrompt(true)}
@@ -570,6 +634,73 @@ export default function Home() {
         </div>
       </header>
 
+      {/* Nav rows — full width, outside main's max-w constraint */}
+      {!isLoading && (
+        <>
+          {/* Nav — profile row + copy block tabs */}
+          <div>
+            {/* Row 1 — Profile + details */}
+            <div className="flex items-center gap-3 py-3 px-6">
+              <select
+                id="profile-select"
+                name="profile-select"
+                value={activeTab}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === "new") switchToNew();
+                  else switchToProfile(val);
+                }}
+                className="shrink-0 text-sm font-medium font-ui bg-transparent border border-ct-rule rounded-[--radius-md] py-1.5 pl-3 pr-8 focus:outline-none focus:border-ct-muted cursor-pointer text-ct-ink"
+              >
+                {contexts.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name || "Untitled"}
+                  </option>
+                ))}
+                {contexts.length < MAX_PROFILES && (
+                  <option value="new">+ New Profile</option>
+                )}
+              </select>
+              {activeContext && !editing && (
+                <>
+                  <p className="text-sm text-ct-muted truncate flex-1">
+                    {[activeContext.audience, activeContext.tone].filter(Boolean).join(" · ")}
+                  </p>
+                  <button
+                    onClick={() => { setForm(activeContext); setEditing(true); }}
+                    className="shrink-0 text-ct-muted hover:text-ct-ink transition-colors"
+                    aria-label="Edit profile"
+                  >
+                    ✎
+                  </button>
+                </>
+              )}
+            </div>
+
+            {/* Row 2 — Copy block tabs with tree connector */}
+            <div
+              className="flex items-end px-6"
+              style={{
+                backgroundImage: 'linear-gradient(to bottom, transparent 33px, var(--ct-rule) 33px, var(--ct-rule) 34px, transparent 34px)',
+                backgroundSize: '100% 34px',
+                backgroundPosition: '0 0',
+              }}
+            >
+              {/* L-shaped tree connector */}
+              <div className="shrink-0 w-5 mr-2 self-start">
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none" className="text-ct-rule">
+                  <path d="M4 0 L4 12 L18 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                </svg>
+              </div>
+              <div
+                ref={setPickerSlot}
+                className="flex items-end gap-x-1 flex-1 flex-wrap"
+              />
+            </div>
+          </div>
+        </>
+      )}
+
       <main className="px-6 py-8">
         <div className="mx-auto max-w-4xl">
           {isLoading ? (
@@ -578,116 +709,35 @@ export default function Home() {
             </div>
           ) : (
           <>
-          {/* Profile tabs */}
-          <div className="flex items-center gap-1 mb-6 border-b border-ct-rule overflow-x-auto">
-            {contexts.map((c) => (
-              <button
-                key={c.id}
-                onClick={() => switchToProfile(c.id)}
-                className={`shrink-0 px-4 py-2 text-sm font-ui transition-colors border-b-2 -mb-px ${
-                  activeTab === c.id
-                    ? "border-ct-accent text-ct-ink font-medium"
-                    : "border-transparent text-ct-muted hover:text-ct-ink"
-                }`}
-              >
-                {c.name || "Untitled"}
-              </button>
-            ))}
-            {contexts.length < MAX_PROFILES && (
-              <button
-                onClick={switchToNew}
-                className={`shrink-0 px-4 py-2 text-sm font-ui transition-colors border-b-2 -mb-px ${
-                  activeTab === "new"
-                    ? "border-ct-accent text-ct-ink font-medium"
-                    : "border-transparent text-ct-muted hover:text-ct-ink"
-                }`}
-              >
-                + New
-              </button>
-            )}
-          </div>
 
-          {/* Profile panel */}
-          <div className="mb-8">
-            <div className="flex items-center gap-3 mb-4">
-              <button
-                onClick={() => setBrandOpen(!brandOpen)}
-                className="flex items-center gap-2 text-sm font-medium font-ui text-ct-muted hover:text-ct-ink transition-colors"
-              >
-                <span className="text-xs">{brandOpen ? "▼" : "▶"}</span>
-                Profile
-              </button>
-              {brandOpen && editing && activeTab === "new" && canGenerate && (
-                <button
-                  onClick={handleSaveNew}
-                  className="text-xs font-ui font-medium text-ct-muted hover:text-ct-ink transition-colors"
-                >
-                  Save Profile
-                </button>
-              )}
-              {brandOpen && editing && activeTab !== "new" && (
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={handleSaveEdits}
-                    className="text-xs font-ui font-medium text-ct-muted hover:text-ct-ink transition-colors"
-                  >
-                    Save
-                  </button>
-                  <button
-                    onClick={() => {
-                      setForm(activeContext!);
-                      setEditing(false);
-                    }}
-                    className="text-xs font-ui text-ct-muted hover:text-ct-ink transition-colors"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              )}
-              {brandOpen && activeTab !== "new" && (
-                <div className="flex items-center gap-3 ml-auto">
-                  {!editing && (
-                    <button
-                      onClick={() => {
-                        setBrandOpen(true);
-                        setEditing(true);
-                      }}
-                      className="text-xs font-ui text-ct-muted hover:text-ct-ink transition-colors"
-                    >
-                      Edit
-                    </button>
-                  )}
-                  <button
-                    onClick={() => {
-                      setConfirmDialog({
-                        message: `Delete "${activeContext?.name || "this profile"}" and all its copy blocks?`,
-                        onConfirm: () => {
-                          handleDelete(activeTab);
-                          setConfirmDialog(null);
-                        },
-                      });
-                    }}
-                    className="text-xs font-ui text-ct-rule hover:text-ct-strike transition-colors"
-                  >
-                    Delete
-                  </button>
-                </div>
-              )}
+          {/* Profile form — shown for new profiles or when editing existing */}
+          {(activeTab === "new" || (activeContext && editing)) && (
+            <div className="mb-8">
+              <BrandForm
+                form={form}
+                update={update}
+                canGenerate={canGenerate}
+                isNew={activeTab === "new"}
+                onSave={activeTab === "new" ? handleSaveNew : handleSaveEdits}
+                onCancel={activeTab !== "new" ? () => { setForm(activeContext!); setEditing(false); } : undefined}
+                onDelete={activeTab !== "new" ? () => {
+                  setConfirmDialog({
+                    message: `Delete "${activeContext?.name || "this profile"}" and all its copy blocks?`,
+                    onConfirm: () => {
+                      handleDelete(activeTab);
+                      setConfirmDialog(null);
+                    },
+                  });
+                } : undefined}
+              />
             </div>
+          )}
 
-            {brandOpen && (
-              <div>
-                {editing ? (
-                  <BrandForm form={form} update={update} canGenerate={canGenerate} isNew={activeTab === "new"} />
-                ) : (
-                  <BrandReadOnly context={activeContext!} />
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Generation workspace */}
-          <GenerationWorkspace
+          {/* Generation workspace — always mounted when context exists (for portal),
+              but main content hidden during editing */}
+          {activeContext && <GenerationWorkspace
+            hidden={editing}
+            pickerSlot={pickerSlot}
             context={activeContext}
             blockId={route.blockId}
             onBlockChange={(blockId) => {
@@ -695,10 +745,14 @@ export default function Home() {
               if (blockId === null) {
                 replace(profileSlug, "new");
               } else {
-                // Look up block slug from session
                 const session = getSession();
                 const block = session.copy_blocks.find((b) => b.id === blockId);
                 replace(profileSlug, block?.slug ?? blockId);
+              }
+              // Exit editing mode when user clicks a document pill
+              if (editing && blockId !== null) {
+                setForm(activeContext);
+                setEditing(false);
               }
               if (activeContext) setActiveBlockForContext(activeContext.id, blockId);
             }}
@@ -718,7 +772,7 @@ export default function Home() {
               }
             }}
             onConfirm={(message, onConfirm) => setConfirmDialog({ message, onConfirm: () => { onConfirm(); setConfirmDialog(null); } })}
-          />
+          />}
           </>
           )}
         </div>
@@ -742,102 +796,6 @@ export default function Home() {
   );
 }
 
-// ── Read-only brand display ──────────────────────────────────────
-
-function BrandReadOnly({ context }: { context: BrandContext }) {
-  return (
-    <div className="space-y-3 text-sm">
-      <Row label="Profile Name" value={context.name} />
-      <Row label="Business" value={context.business_name} />
-      <Row label="Description" value={context.business_description} />
-      <Row label="Audience" value={context.audience} />
-      <Row label="Tone" value={context.tone} />
-      {context.tone_examples && <Row label="Voice sample" value={context.tone_examples} />}
-      {context.source_url && <Row label="Website" value={context.source_url} />}
-      {context.voice_profile && (
-        <div className="border-t border-ct-rule pt-3 mt-3">
-          <span className="text-[length:--text-xs] text-ct-muted">Generated Voice Profile</span>
-          <VoiceProfileDisplay text={context.voice_profile} />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function Row({ label, value }: { label: string; value: string }) {
-  if (!value) return null;
-  return (
-    <div className="flex gap-4">
-      <span className="shrink-0 w-28 text-ct-muted">{label}</span>
-      <span className="text-ct-ink">{value}</span>
-    </div>
-  );
-}
-
-/**
- * Renders the LLM-generated voice profile with basic formatting.
- *
- * The voice API returns a plain-text block that typically uses markdown-ish
- * conventions: **Bold Section Headers**, lines starting with "- " for bullets,
- * and blank lines between sections. Rather than pulling in a full markdown
- * parser for this one spot, we do a lightweight transform:
- *
- * 1. Split on newlines.
- * 2. Lines starting with "- " become <li> items grouped into <ul>s.
- * 3. Inline **bold** markers become <strong> tags.
- * 4. Everything else becomes a <p>.
- *
- * This is a presentational component — no state, no effects.
- */
-function VoiceProfileDisplay({ text }: { text: string }) {
-  const lines = text.split("\n");
-  const elements: React.ReactNode[] = [];
-  let bulletBuffer: string[] = [];
-  let key = 0;
-
-  function flushBullets() {
-    if (bulletBuffer.length === 0) return;
-    elements.push(
-      <ul key={key++} className="list-disc list-outside pl-4 space-y-0.5">
-        {bulletBuffer.map((b, i) => (
-          <li key={i}>{formatBold(b)}</li>
-        ))}
-      </ul>
-    );
-    bulletBuffer = [];
-  }
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      flushBullets();
-      continue;
-    }
-    if (/^[-•]\s/.test(trimmed)) {
-      bulletBuffer.push(trimmed.replace(/^[-•]\s+/, ""));
-    } else {
-      flushBullets();
-      elements.push(<p key={key++}>{formatBold(trimmed)}</p>);
-    }
-  }
-  flushBullets();
-
-  return (
-    <div className="text-[length:--text-xs] text-ct-muted mt-1 leading-relaxed space-y-2">
-      {elements}
-    </div>
-  );
-}
-
-/** Replace **bold** markers with <strong> tags. */
-function formatBold(text: string): React.ReactNode {
-  const parts = text.split(/\*\*(.+?)\*\*/g);
-  if (parts.length === 1) return text;
-  return parts.map((part, i) =>
-    i % 2 === 1 ? <strong key={i} className="font-semibold text-ct-ink">{part}</strong> : part
-  );
-}
-
 // ── Editable brand form ──────────────────────────────────────────
 
 function BrandForm({
@@ -845,11 +803,17 @@ function BrandForm({
   update,
   canGenerate,
   isNew,
+  onSave,
+  onCancel,
+  onDelete,
 }: {
   form: Partial<BrandContext>;
   update: (fields: Partial<BrandContext>) => void;
   canGenerate: boolean;
   isNew: boolean;
+  onSave: () => void;
+  onCancel?: () => void;
+  onDelete?: () => void;
 }) {
   return (
     <div className="space-y-4">
@@ -913,6 +877,57 @@ function BrandForm({
             onChange={(v) => update({ source_url: v })}
           />
         </div>
+      </div>
+
+      {/* Voice profile — only shown when editing an existing profile that has one */}
+      {!isNew && form.voice_profile && (
+        <div className="border-t border-ct-rule pt-4 mt-2">
+          <Field
+            id="voice-profile"
+            label="Voice Profile"
+            placeholder="Generated after first save"
+            value={form.voice_profile ?? ""}
+            onChange={(v) => update({ voice_profile: v })}
+            multiline
+            maxLength={3000}
+          />
+          <p className="text-xs text-ct-muted mt-1">
+            Auto-generated from your profile. Edit to fine-tune how your copy sounds.
+          </p>
+        </div>
+      )}
+
+      {/* Save / Cancel / Delete buttons */}
+      <div className="flex items-center gap-3 pt-2">
+        {isNew ? (
+          canGenerate && (
+            <button onClick={onSave} className="ct-btn">
+              Save Profile
+            </button>
+          )
+        ) : (
+          <>
+            <button onClick={onSave} className="ct-btn">
+              Save
+            </button>
+            {onCancel && (
+              <button
+                onClick={onCancel}
+                className="text-sm font-ui text-ct-muted hover:text-ct-ink transition-colors"
+              >
+                Cancel
+              </button>
+            )}
+            {onDelete && (
+              <button
+                onClick={onDelete}
+                className="ml-auto text-sm font-ui text-ct-rule hover:text-ct-strike transition-colors"
+              >
+                Delete
+              </button>
+            )}
+          </>
+        )}
       </div>
 
       {isNew && !canGenerate && (
