@@ -98,16 +98,15 @@ export interface ComponentEditorHandle {
 interface ComponentEditorProps {
   content: TipTapDoc;
   maxChars?: number;
-  minChars?: number;
-  maxWords?: number;
-  minWords?: number;
   onChange: (json: TipTapDoc) => void;
+  onConstraintsChange?: (maxChars?: number) => void;
   singleLine?: boolean;
 }
 
 export const ComponentEditor = forwardRef<ComponentEditorHandle, ComponentEditorProps>(
-  function ComponentEditor({ content, maxChars, minChars, maxWords, minWords, onChange, singleLine }, ref) {
+  function ComponentEditor({ content, maxChars, onChange, onConstraintsChange, singleLine }, ref) {
   const [showSource, setShowSource] = useState(false);
+    const [editingConstraints, setEditingConstraints] = useState(false);
   const [sourceHtml, setSourceHtml] = useState("");
 
   useImperativeHandle(ref, () => ({
@@ -155,7 +154,7 @@ export const ComponentEditor = forwardRef<ComponentEditorHandle, ComponentEditor
         : undefined,
       attributes: {
         class:
-          "prose dark:prose-invert max-w-none focus:outline-none min-h-[2.5rem] px-3 py-4",
+          "prose dark:prose-invert max-w-none focus:outline-none min-h-[8rem] px-8 pt-12 pb-8",
       },
     },
     onUpdate: ({ editor }) => {
@@ -175,29 +174,16 @@ export const ComponentEditor = forwardRef<ComponentEditorHandle, ComponentEditor
 
   const charCount = editor?.storage.characterCount.characters() ?? 0;
 
-  // Word count: split editor plain text on whitespace, filter empties.
-  // TipTap's characterCount extension tracks chars but not words in all
-  // versions, so we derive it from the text content directly.
   const wordCount = editor
     ? editor.getText().split(/\s+/).filter(Boolean).length
     : 0;
 
-  // Color coding uses word count when word limits are set, falls back to
-  // char-based limits for backward compat (though we no longer display chars).
   const countColor =
-    maxWords && wordCount > maxWords
+    maxChars && charCount > maxChars
       ? "text-ct-strike"
-      : maxWords && wordCount > maxWords * 0.9
+      : maxChars && charCount > maxChars * 0.9
         ? "text-ct-highlight"
-        : minWords && wordCount < minWords
-          ? "text-ct-highlight"
-          : maxChars && charCount > maxChars
-            ? "text-ct-strike"
-            : maxChars && charCount > maxChars * 0.9
-              ? "text-ct-highlight"
-              : minChars && charCount < minChars
-                ? "text-ct-highlight"
-                : "text-ct-muted";
+        : "text-ct-muted";
 
   const handleSourceChange = useCallback(
     (html: string) => {
@@ -217,159 +203,190 @@ export const ComponentEditor = forwardRef<ComponentEditorHandle, ComponentEditor
   if (!editor) return null;
 
   return (
-    <div className="rounded-[--radius-md] border border-ct-rule bg-ct-paper">
-      {/* Toolbar — only for multi-line mode */}
+    <div className="relative mt-5">
+      {/* Floating toolbar — overlaps top edge of the page */}
       {!singleLine && (
-        <div
-          role="toolbar"
-          aria-label="Formatting options"
-          className="flex flex-wrap items-center gap-0.5 border-b border-ct-rule px-2 py-1"
-        >
-          {/* Group 1: Inline formatting */}
-          <ToolbarButton
-            onClick={() => editor.chain().focus().toggleBold().run()}
-            active={editor.isActive("bold")}
-            label="Bold"
+        <div className="absolute -top-4 left-0 right-0 z-10 flex justify-center">
+          <div
+            role="toolbar"
+            aria-label="Formatting options"
+            className="inline-flex items-center gap-0.5 rounded-[--radius-lg] bg-ct-cream px-2.5 py-1.5 shadow-[var(--shadow-sm)]"
           >
-            <Bold size={16} />
-          </ToolbarButton>
-          <ToolbarButton
-            onClick={() => editor.chain().focus().toggleItalic().run()}
-            active={editor.isActive("italic")}
-            label="Italic"
-          >
-            <Italic size={16} />
-          </ToolbarButton>
-          <ToolbarButton
-            onClick={() => editor.chain().focus().toggleStrike().run()}
-            active={editor.isActive("strike")}
-            label="Strikethrough"
-          >
-            <Strikethrough size={16} />
-          </ToolbarButton>
-          <ToolbarButton
-            onClick={() => editor.chain().focus().toggleCode().run()}
-            active={editor.isActive("code")}
-            label="Inline Code"
-          >
-            <Code size={16} />
-          </ToolbarButton>
+            {/* Inline formatting */}
+            <ToolbarButton
+              onClick={() => editor.chain().focus().toggleBold().run()}
+              active={editor.isActive("bold")}
+              label="Bold"
+            >
+              <Bold size={16} />
+            </ToolbarButton>
+            <ToolbarButton
+              onClick={() => editor.chain().focus().toggleItalic().run()}
+              active={editor.isActive("italic")}
+              label="Italic"
+            >
+              <Italic size={16} />
+            </ToolbarButton>
+            <ToolbarButton
+              onClick={() => editor.chain().focus().toggleStrike().run()}
+              active={editor.isActive("strike")}
+              label="Strikethrough"
+            >
+              <Strikethrough size={16} />
+            </ToolbarButton>
+            <ToolbarButton
+              onClick={() => editor.chain().focus().toggleCode().run()}
+              active={editor.isActive("code")}
+              label="Inline Code"
+            >
+              <Code size={16} />
+            </ToolbarButton>
 
-          <ToolbarDivider />
+            <ToolbarDivider />
 
-          {/* Group 2: Heading dropdown */}
-          <select
-            value={
-              [1, 2, 3, 4, 5, 6].find((l) =>
-                editor.isActive("heading", { level: l }),
-              )
-                ? `h${[1, 2, 3, 4, 5, 6].find((l) => editor.isActive("heading", { level: l }))}`
-                : "paragraph"
-            }
-            onChange={(e) => {
-              const val = e.target.value;
-              if (val === "paragraph") {
-                editor.chain().focus().setParagraph().run();
-              } else {
-                editor
-                  .chain()
-                  .focus()
-                  .toggleHeading({
-                    level: parseInt(val[1]) as 1 | 2 | 3 | 4 | 5 | 6,
-                  })
-                  .run();
+            {/* Block type */}
+            <select
+              value={
+                [1, 2, 3, 4, 5, 6].find((l) =>
+                  editor.isActive("heading", { level: l }),
+                )
+                  ? `h${[1, 2, 3, 4, 5, 6].find((l) => editor.isActive("heading", { level: l }))}`
+                  : "paragraph"
               }
-            }}
-            className="h-7 rounded-[--radius-sm] border-none bg-transparent px-1 text-xs font-ui text-ct-muted hover:text-ct-ink focus:outline-none cursor-pointer"
-            aria-label="Block type"
-          >
-            <option value="paragraph">Paragraph</option>
-            <option value="h1">Heading 1</option>
-            <option value="h2">Heading 2</option>
-            <option value="h3">Heading 3</option>
-            <option value="h4">Heading 4</option>
-            <option value="h5">Heading 5</option>
-            <option value="h6">Heading 6</option>
-          </select>
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val === "paragraph") {
+                  editor.chain().focus().setParagraph().run();
+                } else {
+                  editor
+                    .chain()
+                    .focus()
+                    .toggleHeading({
+                      level: parseInt(val[1]) as 1 | 2 | 3 | 4 | 5 | 6,
+                    })
+                    .run();
+                }
+              }}
+              className="h-7 rounded-[--radius-sm] border-none bg-transparent px-1 text-xs font-ui text-ct-muted hover:text-ct-ink focus:outline-none cursor-pointer"
+              aria-label="Block type"
+            >
+              <option value="paragraph">Paragraph</option>
+              <option value="h1">Heading 1</option>
+              <option value="h2">Heading 2</option>
+              <option value="h3">Heading 3</option>
+              <option value="h4">Heading 4</option>
+              <option value="h5">Heading 5</option>
+              <option value="h6">Heading 6</option>
+            </select>
 
-          <ToolbarDivider />
+            <ToolbarDivider />
 
-          {/* Group 3: Lists & blockquote */}
-          <ToolbarButton
-            onClick={() => editor.chain().focus().toggleBulletList().run()}
-            active={editor.isActive("bulletList")}
-            label="Bullet List"
-          >
-            <List size={16} />
-          </ToolbarButton>
-          <ToolbarButton
-            onClick={() => editor.chain().focus().toggleOrderedList().run()}
-            active={editor.isActive("orderedList")}
-            label="Ordered List"
-          >
-            <ListOrdered size={16} />
-          </ToolbarButton>
-          <ToolbarButton
-            onClick={() => editor.chain().focus().toggleBlockquote().run()}
-            active={editor.isActive("blockquote")}
-            label="Blockquote"
-          >
-            <Quote size={16} />
-          </ToolbarButton>
+            {/* Lists, blockquote, link, rule */}
+            <ToolbarButton
+              onClick={() => editor.chain().focus().toggleBulletList().run()}
+              active={editor.isActive("bulletList")}
+              label="Bullet List"
+            >
+              <List size={16} />
+            </ToolbarButton>
+            <ToolbarButton
+              onClick={() => editor.chain().focus().toggleOrderedList().run()}
+              active={editor.isActive("orderedList")}
+              label="Ordered List"
+            >
+              <ListOrdered size={16} />
+            </ToolbarButton>
+            <ToolbarButton
+              onClick={() => editor.chain().focus().toggleBlockquote().run()}
+              active={editor.isActive("blockquote")}
+              label="Blockquote"
+            >
+              <Quote size={16} />
+            </ToolbarButton>
 
-          <ToolbarDivider />
+            <ToolbarDivider />
 
-          {/* Group 4: Link & horizontal rule */}
-          <ToolbarButton
-            onClick={() => {
-              if (editor.isActive("link")) {
-                editor.chain().focus().unsetLink().run();
-                return;
-              }
-              const url = window.prompt("URL:");
-              if (url) {
-                editor.chain().focus().setLink({ href: url }).run();
-              }
-            }}
-            active={editor.isActive("link")}
-            label="Link"
-          >
-            <Link2 size={16} />
-          </ToolbarButton>
-          <ToolbarButton
-            onClick={() => editor.chain().focus().setHorizontalRule().run()}
-            active={false}
-            label="Horizontal Rule"
-          >
-            <Minus size={16} />
-          </ToolbarButton>
+            <ToolbarButton
+              onClick={() => {
+                if (editor.isActive("link")) {
+                  editor.chain().focus().unsetLink().run();
+                  return;
+                }
+                const url = window.prompt("URL:");
+                if (url) {
+                  editor.chain().focus().setLink({ href: url }).run();
+                }
+              }}
+              active={editor.isActive("link")}
+              label="Link"
+            >
+              <Link2 size={16} />
+            </ToolbarButton>
+            <ToolbarButton
+              onClick={() => editor.chain().focus().setHorizontalRule().run()}
+              active={false}
+              label="Horizontal Rule"
+            >
+              <Minus size={16} />
+            </ToolbarButton>
+          </div>
         </div>
       )}
 
-      {/* Editor or source view */}
-      {showSource ? (
-        <textarea
-          value={sourceHtml}
-          onChange={(e) => handleSourceChange(e.target.value)}
-          className="w-full min-h-[6rem] bg-ct-paper px-3 py-2 font-mono text-sm text-ct-ink focus:outline-none"
-          spellCheck={false}
-        />
-      ) : (
-        <EditorContent editor={editor} />
-      )}
+      {/* Page surface */}
+      <div className="rounded-[--radius-lg] bg-white dark:bg-ct-cream shadow-[var(--shadow-md)]">
+        {/* Editor or source view */}
+        {showSource ? (
+          <textarea
+            value={sourceHtml}
+            onChange={(e) => handleSourceChange(e.target.value)}
+            className="w-full min-h-[12rem] bg-transparent rounded-[--radius-lg] px-8 pt-12 pb-8 font-mono text-sm text-ct-ink focus:outline-none"
+            spellCheck={false}
+          />
+        ) : (
+          <EditorContent editor={editor} />
+        )}
 
-      {/* Footer: char count + source toggle */}
-      <div className="flex items-center justify-between border-t border-ct-rule px-3 py-1.5">
-        <span className={`text-xs ${countColor}`}>
-          {wordCount}{maxWords ? ` / ${maxWords}` : ""} words
-          {minWords && wordCount < minWords ? ` (min ${minWords})` : ""}
-        </span>
-        <button
-          onClick={toggleSource}
-          className="text-xs text-ct-muted hover:text-ct-ink transition-colors"
-        >
-          {showSource ? "Rich Text" : "HTML"}
-        </button>
+        {/* Footer: char count (clickable for max chars constraint) + source toggle */}
+        <div className="flex items-center justify-between px-8 pb-4 h-10">
+          <div className="flex items-center gap-3">
+            {onConstraintsChange ? (
+              <button
+                onClick={() => setEditingConstraints((prev) => !prev)}
+                className={`text-xs ${countColor} hover:text-ct-ink transition-colors cursor-pointer`}
+              >
+                {wordCount} {wordCount === 1 ? "word" : "words"}
+              </button>
+            ) : (
+              <span className={`text-xs ${countColor}`}>
+                {wordCount} {wordCount === 1 ? "word" : "words"}
+              </span>
+            )}
+            {editingConstraints && onConstraintsChange && (
+              <label className="flex items-center gap-1 text-xs text-ct-muted">
+                Max chars
+                <input
+                  id="editor-max-chars"
+                  name="editor-max-chars"
+                  type="number"
+                  min={1}
+                  value={maxChars ?? ""}
+                  onChange={(e) => onConstraintsChange(
+                    e.target.value ? Number(e.target.value) : undefined,
+                  )}
+                  className="w-16 py-0.5 px-1.5 text-xs bg-transparent border border-ct-rule rounded-[--radius-sm] text-ct-ink focus:outline-none focus:border-ct-muted"
+                  placeholder="—"
+                />
+              </label>
+            )}
+          </div>
+          <button
+            onClick={toggleSource}
+            className="text-xs text-ct-muted hover:text-ct-ink transition-colors"
+          >
+            {showSource ? "Rich Text" : "HTML"}
+          </button>
+        </div>
       </div>
     </div>
   );

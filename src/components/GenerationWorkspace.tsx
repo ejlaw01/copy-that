@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
+import { ChevronDown } from "lucide-react";
 import {
   ComponentEditor,
   type ComponentEditorHandle,
@@ -199,6 +200,9 @@ export function GenerationWorkspace({
 }: GenerationWorkspaceProps) {
   const [generating, setGenerating] = useState(false);
   const [canSave, setCanSave] = useState(false);
+  const [categoryOpen, setCategoryOpen] = useState(false);
+  const [customCategory, setCustomCategory] = useState("");
+  const categoryRef = useRef<HTMLDivElement>(null);
   const ignoreNextChangeRef = useRef(false);
   const editorRef = useRef<ComponentEditorHandle>(null);
   const turnstileRef = useRef<TurnstileHandle>(null);
@@ -275,28 +279,15 @@ export function GenerationWorkspace({
     return (block?.ai_notes as AiNotes | null) ?? null;
   });
 
-  // Constraint state — pre-populated from category defaults, user-adjustable.
-  const [maxWords, setMaxWords] = useState<number | undefined>(() => {
-    if (!context) return CONTENT_CATEGORIES["general"].default_max_words;
+  // Constraint state — optional max character limit, user-adjustable.
+  const [maxChars, setMaxChars] = useState<number | undefined>(() => {
+    if (!context) return undefined;
     const block = getActiveBlockForContext(context.id);
-    if (block) return block.max_words;
+    if (block) return block.max_chars;
     const draft = getDraft(context.id);
-    return (
-      draft?.max_words ??
-      CONTENT_CATEGORIES[draft?.category ?? "general"].default_max_words
-    );
+    return draft?.max_chars;
   });
-  const [minWords, setMinWords] = useState<number | undefined>(() => {
-    if (!context) return CONTENT_CATEGORIES["general"].default_min_words;
-    const block = getActiveBlockForContext(context.id);
-    if (block) return block.min_words;
-    const draft = getDraft(context.id);
-    return (
-      draft?.min_words ??
-      CONTENT_CATEGORIES[draft?.category ?? "general"].default_min_words
-    );
-  });
-  const [showConstraints, setShowConstraints] = useState(false);
+
   const [constraintWarning, setConstraintWarning] = useState<string | null>(
     null,
   );
@@ -317,17 +308,32 @@ export function GenerationWorkspace({
     currentBlock,
     category,
     userPrompt,
-    maxWords,
-    minWords,
+    maxChars,
   });
   draftRef.current = {
     context,
     currentBlock,
     category,
     userPrompt,
-    maxWords,
-    minWords,
+    maxChars,
   };
+
+  // Close category dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (
+        categoryRef.current &&
+        !categoryRef.current.contains(e.target as Node)
+      ) {
+        setCategoryOpen(false);
+      }
+    }
+    if (categoryOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () =>
+        document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [categoryOpen]);
 
   useEffect(() => {
     function handleBeforeUnload() {
@@ -336,15 +342,13 @@ export function GenerationWorkspace({
         currentBlock: block,
         category: cat,
         userPrompt: prompt,
-        maxWords: max,
-        minWords: min,
+        maxChars: mc,
       } = draftRef.current;
       if (ctx && !block) {
         saveDraft(ctx.id, {
           category: cat,
           user_prompt: prompt,
-          max_words: max,
-          min_words: min,
+          max_chars: mc,
         });
       }
     }
@@ -377,8 +381,7 @@ export function GenerationWorkspace({
       saveDraft(prevId, {
         category,
         user_prompt: userPrompt,
-        max_words: maxWords,
-        min_words: minWords,
+        max_chars: maxChars,
       });
     }
 
@@ -388,8 +391,7 @@ export function GenerationWorkspace({
       setCurrentBlock(null);
       setCategory("general");
       setUserPrompt("");
-      setMaxWords(CONTENT_CATEGORIES["general"].default_max_words);
-      setMinWords(CONTENT_CATEGORIES["general"].default_min_words);
+      setMaxChars(undefined);
       setAiNotes(null);
       setFeedback("");
       setCanSave(false);
@@ -430,8 +432,7 @@ export function GenerationWorkspace({
       setCurrentBlock(resolvedBlock);
       setCategory(resolvedBlock.component_type);
       setUserPrompt(resolvedBlock.user_prompt ?? "");
-      setMaxWords(resolvedBlock.max_words);
-      setMinWords(resolvedBlock.min_words);
+      setMaxChars(resolvedBlock.max_chars);
       setAiNotes((resolvedBlock.ai_notes as AiNotes | null) ?? null);
     } else {
       setCurrentBlock(null);
@@ -441,12 +442,7 @@ export function GenerationWorkspace({
       const draftCat = draft?.category ?? "general";
       setCategory(draftCat);
       setUserPrompt(draft?.user_prompt ?? "");
-      setMaxWords(
-        draft?.max_words ?? CONTENT_CATEGORIES[draftCat].default_max_words,
-      );
-      setMinWords(
-        draft?.min_words ?? CONTENT_CATEGORIES[draftCat].default_min_words,
-      );
+      setMaxChars(draft?.max_chars);
       onBlockChange(null);
     }
     setCanSave(false);
@@ -470,12 +466,7 @@ export function GenerationWorkspace({
       const draftCat = draft?.category ?? "general";
       setCategory(draftCat);
       setUserPrompt(draft?.user_prompt ?? "");
-      setMaxWords(
-        draft?.max_words ?? CONTENT_CATEGORIES[draftCat].default_max_words,
-      );
-      setMinWords(
-        draft?.min_words ?? CONTENT_CATEGORIES[draftCat].default_min_words,
-      );
+      setMaxChars(draft?.max_chars);
       setFeedback("");
       setCanSave(false);
       setShowVersions(false);
@@ -497,8 +488,7 @@ export function GenerationWorkspace({
     setCurrentBlock(block);
     setCategory(block.component_type);
     setUserPrompt(block.user_prompt ?? "");
-    setMaxWords(block.max_words);
-    setMinWords(block.min_words);
+    setMaxChars(block.max_chars);
     setAiNotes(block.ai_notes as AiNotes | null);
     setFeedback("");
     setCanSave(markDirty);
@@ -551,9 +541,7 @@ export function GenerationWorkspace({
           business_name: ctx.business_name,
           source_content: ctx.source_content,
           turnstile_token: turnstileTokenRef.current,
-          // Word constraints — server converts to chars for validation
-          ...(maxWords !== undefined && { max_words: maxWords }),
-          ...(minWords !== undefined && { min_words: minWords }),
+          ...(maxChars !== undefined && { max_chars: maxChars }),
           // Refinement fields — server constructs the prompt from these
           ...(isRefining && {
             feedback: feedback.trim(),
@@ -606,10 +594,7 @@ export function GenerationWorkspace({
         user_prompt: userPrompt,
         content: data.content,
         ai_notes: data.ai_notes,
-        // Persist the constraints the user asked for so the editor can
-        // show them and future re-validation uses the same values.
-        ...(maxWords !== undefined && { max_words: maxWords }),
-        ...(minWords !== undefined && { min_words: minWords }),
+        ...(maxChars !== undefined && { max_chars: maxChars }),
         version: 1,
         created_at: new Date().toISOString(),
       };
@@ -620,7 +605,7 @@ export function GenerationWorkspace({
       ignoreNextChangeRef.current = true;
       setCurrentBlock(block);
       setAiNotes(data.ai_notes);
-      setUserPrompt("");
+      setUserPrompt(block.user_prompt ?? "");
       setFeedback("");
       setCanSave(false);
       setHistory((prev) => [block, ...prev]);
@@ -661,8 +646,7 @@ export function GenerationWorkspace({
       saveDraft(context.id, {
         category,
         user_prompt: userPrompt,
-        max_words: maxWords,
-        min_words: minWords,
+        max_chars: maxChars,
       });
     }
   }
@@ -884,22 +868,16 @@ export function GenerationWorkspace({
           setActiveBlock(null);
           const draft = context ? getDraft(context.id) : null;
           const draftCat = draft?.category ?? "general";
-          const draftMaxW =
-            draft?.max_words ?? CONTENT_CATEGORIES[draftCat].default_max_words;
-          const draftMinW =
-            draft?.min_words ?? CONTENT_CATEGORIES[draftCat].default_min_words;
           if (context) {
             saveDraft(context.id, {
               category: draftCat,
               user_prompt: draft?.user_prompt ?? "",
-              max_words: draftMaxW,
-              min_words: draftMinW,
+              max_chars: draft?.max_chars,
             });
           }
           setCategory(draftCat);
           setUserPrompt(draft?.user_prompt ?? "");
-          setMaxWords(draftMaxW);
-          setMinWords(draftMinW);
+          setMaxChars(draft?.max_chars);
           setFeedback("");
           setAiNotes(null);
           setCanSave(false);
@@ -935,84 +913,106 @@ export function GenerationWorkspace({
           {/* Category + Prompt */}
           <div className="mb-6 pb-6 space-y-4">
             {!currentBlock && (
-              <div className="flex items-center gap-3">
-                <select
-                  id="category-select"
-                  name="category-select"
-                  value={category}
-                  onChange={(e) => {
-                    const newCat = e.target.value;
-                    setCategory(newCat);
-                    const catInfo = CONTENT_CATEGORIES[newCat];
-                    setMaxWords(catInfo.default_max_words);
-                    setMinWords(catInfo.default_min_words);
-                  }}
-                  className="text-sm font-ui bg-transparent border border-ct-rule rounded-[--radius-md] py-1.5 pl-3 pr-8 focus:outline-none focus:border-ct-muted cursor-pointer text-ct-ink"
-                >
-                  {CATEGORY_KEYS.map((key) => (
-                    <option key={key} value={key}>
-                      {CONTENT_CATEGORIES[key].label}
-                    </option>
-                  ))}
-                </select>
-                <span className="text-xs text-ct-muted flex-1 truncate">
-                  {CONTENT_CATEGORIES[category].guidance}
-                </span>
-                {/* Constraints toggle */}
-                <button
-                  onClick={() => setShowConstraints((prev) => !prev)}
-                  className={`shrink-0 text-xs transition-colors ${showConstraints ? "text-ct-ink" : "text-ct-rule hover:text-ct-muted"}`}
-                  aria-label="Word constraints"
-                  title="Word constraints"
-                >
-                  ⚙
-                </button>
-              </div>
-            )}
-
-            {!currentBlock && showConstraints && (
-              <div className="flex items-center gap-4">
-                <label className="flex items-center gap-1.5 text-xs text-ct-muted">
-                  Min words
-                  <input
-                    id="min-words"
-                    name="min-words"
-                    type="number"
-                    min={1}
-                    value={minWords ?? ""}
-                    onChange={(e) =>
-                      setMinWords(
-                        e.target.value ? Number(e.target.value) : undefined,
-                      )
-                    }
-                    className="ct-input w-20 py-1 text-xs"
-                    placeholder="—"
-                  />
-                </label>
-                <label className="flex items-center gap-1.5 text-xs text-ct-muted">
-                  Max words
-                  <input
-                    id="max-words"
-                    name="max-words"
-                    type="number"
-                    min={1}
-                    value={maxWords ?? ""}
-                    onChange={(e) =>
-                      setMaxWords(
-                        e.target.value ? Number(e.target.value) : undefined,
-                      )
-                    }
-                    className="ct-input w-20 py-1 text-xs"
-                    placeholder="—"
-                  />
-                </label>
-              </div>
+              <>
+                <label className="ct-label pb-3">Settings</label>
+                <div className="flex flex-wrap items-center gap-3">
+                  <div ref={categoryRef} className="relative">
+                    <button
+                      onClick={() => setCategoryOpen((prev) => !prev)}
+                      className="flex items-center gap-1.5 text-base font-semibold font-ui text-ct-ink hover:text-ct-accent border border-ct-rule rounded-[--radius-md] px-3 py-1.5 transition-colors cursor-pointer"
+                    >
+                      {CONTENT_CATEGORIES[category]?.label ?? category}
+                      <ChevronDown
+                        size={14}
+                        className={`text-ct-muted transition-transform ${categoryOpen ? "rotate-180" : ""}`}
+                        aria-hidden="true"
+                      />
+                    </button>
+                    {categoryOpen && (
+                      <div className="absolute top-full left-0 mt-1 min-w-[200px] bg-ct-paper border border-ct-rule rounded-[--radius-md] shadow-md z-30 py-1">
+                        {CATEGORY_KEYS.map((key) => (
+                          <button
+                            key={key}
+                            onClick={() => {
+                              setCategory(key);
+                              setMaxChars(undefined);
+                              setCategoryOpen(false);
+                            }}
+                            className={`w-full text-left px-3 py-1.5 text-sm font-ui transition-colors ${
+                              category === key
+                                ? "text-ct-ink font-medium bg-ct-cream"
+                                : "text-ct-muted hover:text-ct-ink hover:bg-ct-cream"
+                            }`}
+                          >
+                            {CONTENT_CATEGORIES[key].label}
+                          </button>
+                        ))}
+                        <div className="border-t border-ct-rule my-1" />
+                        <div className="px-3 py-1.5">
+                          <input
+                            id="custom-category"
+                            name="custom-category"
+                            type="text"
+                            value={customCategory}
+                            onChange={(e) => setCustomCategory(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && customCategory.trim()) {
+                                setCategory(customCategory.trim());
+                                setMaxChars(undefined);
+                                setCustomCategory("");
+                                setCategoryOpen(false);
+                              }
+                            }}
+                            placeholder="Custom…"
+                            className="w-full text-sm font-ui bg-transparent border-b border-ct-rule text-ct-ink placeholder:text-ct-rule focus:outline-none focus:border-ct-muted py-0.5"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <span className="text-xs text-ct-muted flex-1 basis-48">
+                    {CONTENT_CATEGORIES[category]?.guidance ??
+                      "Follow the user's prompt closely."}
+                  </span>
+                  <label className="shrink-0 flex items-center gap-1.5 text-xs text-ct-muted">
+                    Max chars
+                    <input
+                      id="max-chars"
+                      name="max-chars"
+                      type="number"
+                      min={1}
+                      value={maxChars ?? ""}
+                      onChange={(e) =>
+                        setMaxChars(
+                          e.target.value ? Number(e.target.value) : undefined,
+                        )
+                      }
+                      className="w-16 py-1.5 px-2 text-sm bg-transparent border border-ct-rule rounded-[--radius-md] text-ct-ink focus:outline-none focus:border-ct-muted"
+                      placeholder="—"
+                    />
+                  </label>
+                </div>
+              </>
             )}
 
             <div>
               {currentBlock ? (
-                <p className="text-sm text-ct-muted">{userPrompt}</p>
+                <details className="group" open>
+                  <summary className="cursor-pointer list-none flex items-center gap-1.5 pb-4">
+                    <span className="ct-label !mb-0">Prompt</span>
+                    <ChevronDown
+                      size={16}
+                      className="text-ct-muted group-open:rotate-180"
+                    />
+                  </summary>
+                  <p className="text-sm text-ct-muted whitespace-pre-line pb-2">
+                    {userPrompt}
+                  </p>
+                </details>
               ) : (
+                <label className="ct-label py-3">Prompt</label>
+              )}
+              {!currentBlock && (
                 <textarea
                   id="user-prompt"
                   name="user-prompt"
@@ -1021,7 +1021,7 @@ export function GenerationWorkspace({
                   onKeyDown={handleKeyDown}
                   placeholder='What do you need? e.g., "Write a hero headline that emphasizes our fast turnaround"'
                   rows={3}
-                  maxLength={1000}
+                  maxLength={4000}
                   className="ct-input resize-none"
                 />
               )}
@@ -1054,13 +1054,8 @@ export function GenerationWorkspace({
                 ref={editorRef}
                 content={currentBlock.content as TipTapDoc}
                 onChange={handleContentChange}
-                maxWords={currentBlock.max_words}
-                minWords={currentBlock.min_words}
-                maxChars={
-                  currentBlock.max_words
-                    ? currentBlock.max_words * 6
-                    : undefined
-                }
+                maxChars={maxChars}
+                onConstraintsChange={(mc) => setMaxChars(mc)}
                 singleLine={CONTENT_CATEGORIES[category]?.singleLine}
               />
 
@@ -1093,7 +1088,7 @@ export function GenerationWorkspace({
                 <button
                   onClick={handleSaveVersion}
                   disabled={!canSave}
-                  className="ml-auto text-xs font-ui text-ct-muted hover:text-ct-ink transition-colors disabled:opacity-40"
+                  className="ml-auto text-xs font-ui text-ct-muted hover:text-ct-ink transition-colors disabled:opacity-40 disabled:hover:text-ct-muted disabled:cursor-default"
                 >
                   Save Version
                 </button>

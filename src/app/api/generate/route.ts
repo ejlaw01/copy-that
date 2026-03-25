@@ -11,13 +11,10 @@ import { logUsage } from "@/lib/usage-log";
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { category, user_prompt, voice_profile, business_name, source_content, turnstile_token, feedback, current_copy, max_words, min_words } = body;
+  const { category, user_prompt, voice_profile, business_name, source_content, turnstile_token, feedback, current_copy, max_chars } = body;
   const isRefining = !!feedback && !!current_copy;
 
-  // Convert user-facing word limits to character limits for validation.
-  // 6 chars/word accounts for average word length plus spaces/punctuation.
-  const maxChars = typeof max_words === "number" ? max_words * 6 : undefined;
-  const minChars = typeof min_words === "number" ? min_words * 6 : undefined;
+  const maxChars = typeof max_chars === "number" ? max_chars : undefined;
 
   // Turnstile verification
   if (turnstile_token) {
@@ -42,7 +39,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  if (!category || !CATEGORY_KEYS.includes(category)) {
+  if (!category || typeof category !== "string" || category.length > 100) {
     return NextResponse.json(
       { error: "Invalid content category" },
       { status: 400 }
@@ -51,9 +48,9 @@ export async function POST(req: NextRequest) {
 
   // For refinement, user_prompt can be empty (the original prompt may be lost
   // on older blocks). The feedback field is what matters.
-  if (!isRefining && (!user_prompt || typeof user_prompt !== "string" || user_prompt.length > 1000)) {
+  if (!isRefining && (!user_prompt || typeof user_prompt !== "string" || user_prompt.length > 4000)) {
     return NextResponse.json(
-      { error: "Prompt is required (max 1000 characters)" },
+      { error: "Prompt is required (max 4000 characters)" },
       { status: 400 }
     );
   }
@@ -79,7 +76,10 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const categoryInfo = CONTENT_CATEGORIES[category];
+  const categoryInfo = CONTENT_CATEGORIES[category] ?? {
+    label: category,
+    guidance: "Follow the user's prompt closely.",
+  };
 
   // Check for existing copy context from URL extraction
   let existingCopyContext = "";
@@ -98,11 +98,8 @@ export async function POST(req: NextRequest) {
   }
 
   // Build the constraints section for the prompt
-  const constraintLines: string[] = [];
-  if (max_words) constraintLines.push(`- Maximum length: ${max_words} words (~${maxChars} characters). This is a hard limit.`);
-  if (min_words) constraintLines.push(`- Minimum length: ${min_words} words (~${minChars} characters).`);
-  const constraintSection = constraintLines.length > 0
-    ? `\nCONSTRAINTS:\n${constraintLines.join("\n")}`
+  const constraintSection = maxChars
+    ? `\nCONSTRAINTS:\n- Maximum length: ${maxChars} characters. This is a hard limit.`
     : "";
 
   try {
@@ -139,7 +136,7 @@ Respond with ONLY valid JSON matching this exact structure:
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       const msgToSend = attempt === 0
         ? userMsg
-        : buildRetryPrompt(bestParsed!, maxChars, minChars, max_words, min_words);
+        : buildRetryPrompt(bestParsed!, maxChars);
 
       const result = await prompt(systemMsg, msgToSend, 2048);
       const parsed = parseResponse(result);
@@ -148,26 +145,21 @@ Respond with ONLY valid JSON matching this exact structure:
         : String(parsed.content ?? "");
       const contentLen = contentStr.length;
 
-      // Check constraints
+      // Check constraint
       const overMax = maxChars && contentLen > maxChars;
-      const underMin = minChars && contentLen < minChars;
 
-      if (!overMax && !underMin) {
+      if (!overMax) {
         bestParsed = parsed;
         constraintWarning = undefined;
         break;
       }
 
-      // Track the attempt closest to the constraints
-      const distance = overMax
-        ? contentLen - maxChars!
-        : minChars! - contentLen;
+      // Track the attempt closest to the constraint
+      const distance = contentLen - maxChars!;
       if (distance < bestDistance) {
         bestDistance = distance;
         bestParsed = parsed;
-        constraintWarning = overMax
-          ? `Output is ~${Math.ceil(contentLen / 6)} words (${contentLen} chars), exceeding the ${max_words}-word limit`
-          : `Output is ~${Math.ceil(contentLen / 6)} words (${contentLen} chars), under the ${min_words}-word minimum`;
+        constraintWarning = `Output is ${contentLen} chars, exceeding the ${maxChars}-character limit`;
       }
 
       if (attempt === MAX_RETRIES) break;
@@ -195,8 +187,7 @@ Respond with ONLY valid JSON matching this exact structure:
         generation_reasoning: notes?.reasoning ?? "",
         suggestions: notes?.suggestions ?? [],
       },
-      ...(max_words !== undefined && { max_words }),
-      ...(min_words !== undefined && { min_words }),
+      ...(maxChars !== undefined && { max_chars: maxChars }),
       ...(constraintWarning && { constraint_warning: constraintWarning }),
     });
   } catch (err) {
@@ -224,27 +215,18 @@ function parseResponse(text: string): Record<string, unknown> {
 function buildRetryPrompt(
   previousParsed: Record<string, unknown>,
   maxChars: number | undefined,
-  minChars: number | undefined,
-  maxWords: number | undefined,
-  minWords: number | undefined,
 ): string {
   const contentStr = typeof previousParsed.content === "string"
     ? previousParsed.content
     : String(previousParsed.content ?? "");
   const actualChars = contentStr.length;
-  const overMax = maxChars && actualChars > maxChars;
 
-  const direction = overMax ? "over" : "under";
-  const limit = overMax ? "maximum" : "minimum";
-  const limitChars = overMax ? maxChars : minChars;
-  const limitWords = overMax ? maxWords : minWords;
-
-  return `The previous output was ${direction} the ${limit} limit (~${Math.ceil(actualChars / 6)} words / ${actualChars} chars, limit is ${limitWords} words / ${limitChars} chars).
+  return `The previous output was ${actualChars} characters, exceeding the ${maxChars}-character limit.
 
 Previous output:
 ${contentStr}
 
-Please revise to fit within the constraints. Return the same JSON structure:
+Please revise to fit within ${maxChars} characters. Return the same JSON structure:
 {
   "title": "1-4 word title for this copy block",
   "content": "Your revised copy here. Use \\n for line breaks if multiple paragraphs are appropriate.",
