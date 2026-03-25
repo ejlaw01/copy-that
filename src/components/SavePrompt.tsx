@@ -57,9 +57,9 @@ export function SavePrompt({ onAuthComplete, onDismiss }: SavePromptProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-ct-paper/80 backdrop-blur-sm">
       <div className="mx-4 w-full max-w-sm rounded-[--radius-md] border border-ct-rule bg-ct-paper p-6 shadow-[--shadow-md]">
-        <h3 className="font-display text-lg font-semibold mb-1">Save your work</h3>
+        <h3 className="font-display text-lg font-semibold mb-1">Sign in</h3>
         <p className="font-ui text-sm text-ct-muted mb-5">
-          Enter your email to save your brand voices and copy, and unlock more
+          Enter your email to pick up where you left off and unlock more
           generations.
         </p>
 
@@ -109,7 +109,7 @@ export function SavePrompt({ onAuthComplete, onDismiss }: SavePromptProps) {
               disabled={loading}
               className="ct-btn ct-btn-primary disabled:opacity-50"
             >
-              {loading ? "Sending..." : "Save & Continue"}
+              {loading ? "Sending..." : "Send Magic Link"}
             </button>
           </div>
         </form>

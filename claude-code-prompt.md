@@ -514,6 +514,14 @@ Tone: *"This is a one-person project. I built it, I run it, and I take your priv
 
 Users can change marketing consent later via a settings page or unsubscribe link.
 
+### Session Lifetime
+
+Set the JWT expiry to **604800 seconds (1 week)** in Supabase Dashboard → Authentication → Settings. The default 3600s (1 hour) causes frequent sign-outs for a free tool with no sensitive data. The middleware already handles token refresh on every request, so sessions persist as long as the refresh token is valid. Set the refresh token reuse interval to **10 seconds** to prevent race conditions from concurrent requests.
+
+### OAuth (v2)
+
+Add Google OAuth as an alternative to magic links for faster re-auth. Supabase handles the flow; the client change is minimal (add a "Sign in with Google" button alongside the email input in SavePrompt).
+
 ### Supabase Client Setup
 
 ```typescript

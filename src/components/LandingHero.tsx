@@ -13,7 +13,7 @@ export function LandingHero({ onStart }: LandingHeroProps) {
             className="inline-block font-ui text-ct-muted uppercase tracking-[0.12em] mb-4"
             style={{ fontSize: "var(--text-xs)", fontVariantCaps: "all-small-caps" }}
           >
-            Website Copy Generator
+            Interactive Copy Generator
           </span>
 
           <h1
@@ -26,11 +26,39 @@ export function LandingHero({ onStart }: LandingHeroProps) {
           </h1>
 
           <p
-            className="font-ui text-ct-muted mb-8"
+            className="font-ui text-ct-muted mb-4"
             style={{ fontSize: "var(--text-lg)" }}
           >
             AI-powered copy that remembers your voice.
           </p>
+
+          <div className="flex flex-col gap-4 mb-8">
+            {[
+              { num: "1", title: "Create Voice Profile", desc: "Describe your brand, audience, and tone" },
+              { num: "2", title: "Generate Copy", desc: "AI writes in your voice, for any format" },
+              { num: "3", title: "Edit & Export", desc: "Refine in an interactive editor" },
+            ].map((step) => (
+              <div key={step.num} className="flex items-start gap-3">
+                <span
+                  className="font-display italic shrink-0 leading-none"
+                  style={{ fontSize: "var(--text-3xl)" }}
+                >
+                  {step.num}
+                </span>
+                <div className="pt-1">
+                  <h3
+                    className="font-ui uppercase tracking-[0.08em] font-bold mb-0.5"
+                    style={{ fontSize: "var(--text-sm)", fontVariantCaps: "all-small-caps" }}
+                  >
+                    {step.title}
+                  </h3>
+                  <p className="font-ui text-ct-muted" style={{ fontSize: "var(--text-sm)" }}>
+                    {step.desc}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
 
           <button className="ct-btn ct-btn-primary" onClick={onStart}>
             Get Started — Free
@@ -89,47 +117,6 @@ export function LandingHero({ onStart }: LandingHeroProps) {
         </div>
       </div>
 
-      {/* Divider */}
-      <hr className="rule-heavy max-w-5xl" style={{ marginInline: "auto" }} />
-
-      {/* 3-step strip */}
-      <div className="mx-auto max-w-5xl grid md:grid-cols-3 gap-8 md:gap-12">
-        {[
-          {
-            num: "1",
-            title: "Create Voice Profile",
-            desc: "Describe your brand, audience, and tone",
-          },
-          {
-            num: "2",
-            title: "Generate Copy",
-            desc: "AI writes in your voice, for any format",
-          },
-          {
-            num: "3",
-            title: "Edit & Export",
-            desc: "Refine in a rich text editor, copy when ready",
-          },
-        ].map((step) => (
-          <div key={step.num}>
-            <span
-              className="font-display italic block mb-2"
-              style={{ fontSize: "var(--text-3xl)" }}
-            >
-              {step.num}
-            </span>
-            <h3
-              className="font-ui uppercase tracking-[0.08em] font-bold mb-1"
-              style={{ fontSize: "var(--text-sm)", fontVariantCaps: "all-small-caps" }}
-            >
-              {step.title}
-            </h3>
-            <p className="font-ui text-ct-muted" style={{ fontSize: "var(--text-sm)" }}>
-              {step.desc}
-            </p>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }

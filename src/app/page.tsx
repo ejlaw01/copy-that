@@ -39,7 +39,8 @@ const AUDIENCE_SUGGESTIONS = [
   "Local customers",
   "Online shoppers",
   "Tech-savvy users",
-  "Gen Z / millennials",
+  "Gen Z",
+  "Millennials",
 ];
 
 const TONE_SUGGESTIONS = [
@@ -85,7 +86,6 @@ export default function Home() {
   const [syncStatus, setSyncStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const syncTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [confirmDialog, setConfirmDialog] = useState<{ message: string; onConfirm: () => void } | null>(null);
-  const [heroVisible, setHeroVisible] = useState(true);
   const [extractWarning, setExtractWarning] = useState<string | null>(null);
 
   // Wraps an async sync call with status transitions.
@@ -130,7 +130,7 @@ export default function Home() {
 
   // First-time visitors see the hero; returning users with saved contexts
   // or an explicit hash route skip straight to the app.
-  const showHero = heroVisible && contexts.length === 0 && !route.profileId;
+  const showHero = contexts.length === 0 && !route.profileId;
 
   // Helper: apply panel state for a profile switch.
   // Extracted so both switchToProfile and bootstrap can reuse it.
@@ -702,7 +702,7 @@ export default function Home() {
 
       {/* Landing hero for first-time visitors */}
       {showHero && !isLoading && (
-        <LandingHero onStart={() => setHeroVisible(false)} />
+        <LandingHero onStart={() => navigate("new")} />
       )}
 
       {/* Nav rows — full width, outside main's max-w constraint */}
@@ -935,7 +935,7 @@ function BrandForm({
       />
       <Field
         id="business-name"
-        label="Business Name"
+        label="Business or Product Name"
         placeholder="Your business or project name"
         value={form.business_name ?? ""}
         onChange={(v) => update({ business_name: v })}

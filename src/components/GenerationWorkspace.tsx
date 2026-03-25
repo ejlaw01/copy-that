@@ -199,6 +199,7 @@ export function GenerationWorkspace({
   pickerSlot,
 }: GenerationWorkspaceProps) {
   const [generating, setGenerating] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [canSave, setCanSave] = useState(false);
   const [categoryOpen, setCategoryOpen] = useState(false);
   const [customCategory, setCustomCategory] = useState("");
@@ -666,6 +667,8 @@ export function GenerationWorkspace({
       const text = docToPlainText(currentBlock.content as TipTapDoc);
       await navigator.clipboard.writeText(text);
     }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
   }
 
   function handleDownloadMarkdown() {
@@ -1077,7 +1080,7 @@ export function GenerationWorkspace({
                   onClick={handleCopy}
                   className="text-xs font-ui text-ct-muted hover:text-ct-ink transition-colors"
                 >
-                  Copy
+                  {copied ? "Copied!" : "Copy"}
                 </button>
                 <button
                   onClick={handleDownloadMarkdown}
