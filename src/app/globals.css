@@ -5,6 +5,7 @@
 
 :root {
   /* --- Palette --- */
+  --ct-white:         #ffffff;
   --ct-ink:           #1c1917;
   --ct-paper:         #f7f3ed;
   --ct-cream:         #ede8df;
@@ -68,6 +69,7 @@
 }
 
 .dark {
+  --ct-white:         #000000;
   --ct-paper:         #1c1917;
   --ct-ink:           #f7f3ed;
   --ct-cream:         #292524;
@@ -94,6 +96,7 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-ct-white: var(--ct-white);
   --color-ct-ink: var(--ct-ink);
   --color-ct-paper: var(--ct-paper);
   --color-ct-cream: var(--ct-cream);

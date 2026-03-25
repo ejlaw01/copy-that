@@ -6,6 +6,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { AnimatedEllipsis } from "@/components/AnimatedEllipsis";
 import { GenerationWorkspace } from "@/components/GenerationWorkspace";
 import { SavePrompt } from "@/components/SavePrompt";
+import { LandingHero } from "@/components/LandingHero";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { supabase } from "@/lib/supabase/client";
 import { useHashRoute } from "@/lib/use-hash-route";
@@ -84,6 +85,8 @@ export default function Home() {
   const [syncStatus, setSyncStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const syncTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [confirmDialog, setConfirmDialog] = useState<{ message: string; onConfirm: () => void } | null>(null);
+  const [heroVisible, setHeroVisible] = useState(true);
+  const [extractWarning, setExtractWarning] = useState<string | null>(null);
 
   // Wraps an async sync call with status transitions.
   // Sets 'saving' immediately, then 'saved' (auto-clears after 1.5s) or 'error'.
@@ -124,6 +127,10 @@ export default function Home() {
   const activeContext = activeTab !== "new"
     ? contexts.find((c) => c.id === activeTab) ?? null
     : null;
+
+  // First-time visitors see the hero; returning users with saved contexts
+  // or an explicit hash route skip straight to the app.
+  const showHero = heroVisible && contexts.length === 0 && !route.profileId;
 
   // Helper: apply panel state for a profile switch.
   // Extracted so both switchToProfile and bootstrap can reuse it.
@@ -186,6 +193,9 @@ export default function Home() {
             });
             if (res.ok) {
               ctx = { ...ctx, source_content: await res.json() };
+            } else {
+              const data = await res.json().catch(() => ({}));
+              setExtractWarning(data.error || "Could not extract content from URL");
             }
           } catch {
             // Non-blocking — voice generation works without source content
@@ -587,6 +597,9 @@ export default function Home() {
         if (res.ok) {
           const data = await res.json();
           form.source_content = data;
+        } else {
+          const data = await res.json().catch(() => ({}));
+          setExtractWarning(data.error || "Could not extract content from URL");
         }
       } catch {
         // Non-blocking
@@ -687,8 +700,13 @@ export default function Home() {
         </div>
       </header>
 
+      {/* Landing hero for first-time visitors */}
+      {showHero && !isLoading && (
+        <LandingHero onStart={() => setHeroVisible(false)} />
+      )}
+
       {/* Nav rows — full width, outside main's max-w constraint */}
-      {!isLoading && (
+      {!showHero && !isLoading && (
         <>
           {/* Nav — profile row + copy block tabs */}
           <div>
@@ -740,7 +758,7 @@ export default function Home() {
               </div>
               {activeContext && !editing && (
                 <>
-                  <p className="text-sm text-ct-muted truncate flex-1">
+                  <p className="text-sm text-ct-muted flex-1">
                     {[activeContext.audience, activeContext.tone].filter(Boolean).join(" · ")}
                   </p>
                   <button
@@ -778,7 +796,7 @@ export default function Home() {
         </>
       )}
 
-      <main className="px-6 py-8">
+      {!showHero && <main className="px-6 py-8">
         <div className="mx-auto max-w-4xl">
           {isLoading ? (
             <div className="flex items-center justify-center py-24">
@@ -786,6 +804,20 @@ export default function Home() {
             </div>
           ) : (
           <>
+
+          {/* Extract warning — dismissible, non-blocking */}
+          {extractWarning && (
+            <div className="mb-6 flex items-start gap-3 rounded-[--radius-md] border border-ct-highlight/30 bg-ct-highlight/10 px-4 py-3 text-sm font-ui text-ct-muted">
+              <p className="flex-1">{extractWarning}</p>
+              <button
+                onClick={() => setExtractWarning(null)}
+                className="shrink-0 text-ct-muted hover:text-ct-ink transition-colors"
+                aria-label="Dismiss"
+              >
+                &times;
+              </button>
+            </div>
+          )}
 
           {/* Profile form — shown for new profiles or when editing existing */}
           {(activeTab === "new" || (activeContext && editing)) && (
@@ -853,7 +885,7 @@ export default function Home() {
           </>
           )}
         </div>
-      </main>
+      </main>}
 
       {showSavePrompt && (
         <SavePrompt
