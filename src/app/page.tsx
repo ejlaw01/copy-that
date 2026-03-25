@@ -977,11 +977,9 @@ function BrandForm({
       {/* Save / Cancel / Delete buttons */}
       <div className="flex items-center gap-3 pt-2">
         {isNew ? (
-          canGenerate && (
-            <button onClick={onSave} className="ct-btn">
-              Save Profile
-            </button>
-          )
+          <button onClick={onSave} disabled={!canGenerate} className="ct-btn ct-btn-primary">
+            Save Profile
+          </button>
         ) : (
           <>
             <button onClick={onSave} className="ct-btn">
