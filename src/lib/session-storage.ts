@@ -26,8 +26,7 @@ export interface CopyBlock {
   content: any;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ai_notes: any;
-  max_words?: number;
-  min_words?: number;
+  max_chars?: number;
   version: number;
   created_at: string;
 }
@@ -35,8 +34,7 @@ export interface CopyBlock {
 export interface DraftPrompt {
   category: string;
   user_prompt: string;
-  max_words?: number;
-  min_words?: number;
+  max_chars?: number;
 }
 
 /**

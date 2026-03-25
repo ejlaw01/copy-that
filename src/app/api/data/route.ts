@@ -43,7 +43,6 @@ export async function GET() {
   let copyBlocks: Record<string, unknown>[] = [];
   if (contexts && contexts.length > 0) {
     const contextIds = contexts.map((c) => c.id);
-    console.log(`[/api/data] ${contexts.length} brand contexts, ${contextIds.length} IDs for copy_blocks .in() query`);
 
     const { data: blocks, error: blockError } = await admin
       .from("copy_blocks")
@@ -57,7 +56,6 @@ export async function GET() {
       // their brand contexts; blocks will load on the next attempt.
       console.error("[/api/data] copy_blocks query failed:", blockError.message, blockError);
     } else {
-      console.log(`[/api/data] ${blocks?.length ?? 0} copy blocks loaded`);
       copyBlocks = blocks ?? [];
     }
   }
@@ -92,9 +90,7 @@ export async function GET() {
     user_prompt: (b.user_prompt as string) ?? "",
     content: b.content,
     ai_notes: b.ai_notes,
-    // Constraint fields — may be undefined for blocks created before this feature
-    ...(b.max_words != null && { max_words: b.max_words as number }),
-    ...(b.min_words != null && { min_words: b.min_words as number }),
+    ...(b.max_chars != null && { max_chars: b.max_chars as number }),
     version: (b.version as number) ?? 1,
     created_at: b.created_at as string,
   }));
