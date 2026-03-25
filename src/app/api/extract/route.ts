@@ -50,7 +50,12 @@ function extractText(html: string): string {
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { url, type } = body;
+  const { type } = body;
+  // Normalize bare domains (e.g. "bitlore.io") to full URLs
+  let url: string = body.url ?? "";
+  if (url && !/^https?:\/\//i.test(url)) {
+    url = `https://${url}`;
+  }
 
   if (!url || !isValidUrl(url)) {
     return NextResponse.json({ error: "Invalid URL" }, { status: 400 });
@@ -72,7 +77,7 @@ export async function POST(req: NextRequest) {
 
   if (!extractedText || extractedText.length < 50) {
     return NextResponse.json(
-      { error: "Could not extract meaningful content" },
+      { error: "This site\u2019s content is rendered with JavaScript and can\u2019t be extracted. Try pasting your copy into the description field instead." },
       { status: 422 }
     );
   }
