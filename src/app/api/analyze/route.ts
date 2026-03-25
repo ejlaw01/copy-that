@@ -6,7 +6,7 @@ import { logUsage } from "@/lib/usage-log";
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { current_copy, voice_profile, business_name, user_prompt, turnstile_token } = body;
+  const { current_copy, previous_copy, voice_profile, business_name, user_prompt, turnstile_token } = body;
 
   // Turnstile verification
   if (turnstile_token) {
@@ -41,6 +41,14 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    const previousSection = previous_copy
+      ? `\nPREVIOUS VERSION:\n${previous_copy}\n`
+      : "";
+
+    const diffInstruction = previous_copy
+      ? " If a previous version is provided, note what improved or regressed compared to it."
+      : "";
+
     const result = await prompt(
       `You are a professional copywriter reviewing content for ${business_name}. Respond with ONLY valid JSON, no preamble or markdown fences.`,
       `VOICE PROFILE:
@@ -48,11 +56,11 @@ ${voice_profile}
 
 ORIGINAL REQUEST:
 ${user_prompt || "(no specific request)"}
-
+${previousSection}
 CURRENT COPY:
 ${current_copy}
 
-Analyze this copy against the voice profile and original request. What's working, what could be stronger?
+Analyze this copy against the voice profile and original request. What's working, what could be stronger?${diffInstruction}
 
 Respond with ONLY valid JSON:
 {
