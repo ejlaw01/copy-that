@@ -156,6 +156,11 @@ body {
    INPUTS & TEXTAREAS
    ============================================================ */
 
+input:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 1000px var(--ct-paper) inset;
+  -webkit-text-fill-color: var(--ct-ink);
+}
+
 .ct-input {
   width: 100%;
   font-family: var(--font-ui), 'Helvetica Neue', sans-serif;
