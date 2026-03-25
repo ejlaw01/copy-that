@@ -331,27 +331,65 @@ export default function Home() {
         isAuthenticatedRef.current = true;
         setAuthChecked(true);
 
-        // Skip-fetch optimization: if sessionStorage already has this user's
-        // data (same tab, soft refresh), skip the API call. The stored user ID
-        // acts as a cache key — if the user signed into a different account,
-        // we clear and re-fetch.
+        // Cache-then-refresh: if sessionStorage has this user's data,
+        // hydrate immediately (fast paint), then fetch from Supabase in
+        // the background to pick up changes made on other devices.
         const storedUserId = getSessionUserId();
-        if (storedUserId === user.id) {
-          const session = getSession();
-          if (session.brand_contexts.length > 0) {
-            hydrateFromSession(session);
-            setIsLoading(false);
-            return;
-          }
+        const hasCachedData = storedUserId === user.id && getSession().brand_contexts.length > 0;
+
+        if (hasCachedData) {
+          hydrateFromSession(getSession());
+          setIsLoading(false);
+          // Background refresh — reconcile silently
+          (async () => {
+            try {
+              const res = await fetch("/api/data");
+              if (!res.ok || cancelled) return;
+              const fresh = await res.json();
+              const cached = getSession();
+              // Only update if server data actually differs.
+              // Compare counts + IDs as a lightweight diff.
+              const freshData = fresh as { brand_contexts: BrandContext[]; copy_blocks: CopyBlock[]; active_context_id: string | null };
+              const cachedCtxIds = new Set(cached.brand_contexts.map((c: BrandContext) => c.id));
+              const freshCtxIds = new Set(freshData.brand_contexts.map((c) => c.id));
+              const cachedBlockIds = new Set(cached.copy_blocks.map((b: CopyBlock) => b.id));
+              const freshBlockIds = new Set(freshData.copy_blocks.map((b) => b.id));
+              const same =
+                cachedCtxIds.size === freshCtxIds.size &&
+                cachedBlockIds.size === freshBlockIds.size &&
+                [...freshCtxIds].every((id) => cachedCtxIds.has(id)) &&
+                [...freshBlockIds].every((id) => cachedBlockIds.has(id));
+              if (same) return;
+              // Server has changes — update storage and React state.
+              // Preserve the user's current navigation (don't call
+              // hydrateFromSession which would reset the hash/active tab).
+              // Backfill slugs on fresh data
+              const existingSlugs: string[] = [];
+              for (const ctx of freshData.brand_contexts) {
+                if (!ctx.slug) ctx.slug = uniqueSlug(slugify(ctx.name), existingSlugs);
+                existingSlugs.push(ctx.slug);
+              }
+              const existingBlockSlugs: string[] = [];
+              for (const block of freshData.copy_blocks) {
+                if (!block.slug) block.slug = uniqueSlug(slugify(block.title || block.component_type), existingBlockSlugs);
+                existingBlockSlugs.push(block.slug);
+              }
+              setSession(freshData);
+              setSessionUserId(user.id);
+              if (!cancelled) setContexts(freshData.brand_contexts);
+            } catch {
+              // Silent — stale cache is still usable
+            }
+          })();
+          return;
         }
 
-        // Different user or no cached data — fetch from Supabase
+        // No cached data or different user — blocking fetch
         try {
           const res = await fetch("/api/data");
           if (res.ok) {
             const data = await res.json();
             if (cancelled) return;
-            // Populate sessionStorage so subsequent soft refreshes skip the fetch
             setSession(data);
             setSessionUserId(user.id);
             hydrateFromSession(data);
@@ -665,7 +703,7 @@ export default function Home() {
                   <ChevronDown size={14} className={`text-ct-muted transition-transform ${profileMenuOpen ? "rotate-180" : ""}`} />
                 </button>
                 {profileMenuOpen && (
-                  <div className="absolute top-full left-0 mt-1 min-w-[200px] bg-ct-paper border border-ct-rule rounded-[--radius-md] shadow-md z-30 py-1">
+                  <div className="absolute top-full left-0 mt-1 min-w-[200px] bg-ct-paper border border-ct-rule rounded-[--radius-md] shadow-md z-30">
                     {contexts.map((c) => (
                       <button
                         key={c.id}
@@ -673,10 +711,10 @@ export default function Home() {
                           switchToProfile(c.id);
                           setProfileMenuOpen(false);
                         }}
-                        className={`w-full text-left px-3 py-1.5 text-sm font-ui transition-colors ${
+                        className={`w-full text-left px-3 py-2 text-sm font-ui transition-colors ${
                           activeTab === c.id
                             ? "text-ct-ink font-medium bg-ct-cream"
-                            : "text-ct-muted hover:text-ct-ink hover:bg-ct-cream"
+                            : "text-ct-muted hover:text-ct-ink hover:bg-ct-rule"
                         }`}
                       >
                         {c.name || "Untitled"}
@@ -684,13 +722,13 @@ export default function Home() {
                     ))}
                     {contexts.length < MAX_PROFILES && (
                       <>
-                        {contexts.length > 0 && <div className="border-t border-ct-rule my-1" />}
+                        {contexts.length > 0 && <div className="border-t border-ct-rule" />}
                         <button
                           onClick={() => {
                             switchToNew();
                             setProfileMenuOpen(false);
                           }}
-                          className="w-full text-left px-3 py-1.5 text-sm font-ui text-ct-muted hover:text-ct-ink hover:bg-ct-cream transition-colors flex items-center gap-1.5"
+                          className="w-full text-left px-3 py-2 text-sm font-ui text-ct-muted hover:text-ct-ink hover:bg-ct-rule transition-colors flex items-center gap-1.5"
                         >
                           <Plus size={12} />
                           New Profile
