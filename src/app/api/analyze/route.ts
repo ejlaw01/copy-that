@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prompt, ServiceUnavailableError } from "@/lib/anthropic";
+import { parseJson } from "@/lib/parse-json";
 import { verifyTurnstile } from "@/lib/turnstile";
 import { checkRateLimit, checkAnalysisRateLimit, incrementAnalysisRateLimit } from "@/lib/rate-limit";
 import { logUsage } from "@/lib/usage-log";
@@ -70,7 +71,7 @@ Respond with ONLY valid JSON:
       512
     );
 
-    const parsed = parseResponse(result);
+    const parsed = parseJson(result);
 
     incrementAnalysisRateLimit(req);
     logUsage({
@@ -98,10 +99,3 @@ Respond with ONLY valid JSON:
   }
 }
 
-function parseResponse(text: string): Record<string, unknown> {
-  const cleaned = text
-    .replace(/^```(?:json)?\s*\n?/m, "")
-    .replace(/\n?```\s*$/m, "")
-    .trim();
-  return JSON.parse(cleaned);
-}

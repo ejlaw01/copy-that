@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { supabase } from "@/lib/supabase/client";
+import { Modal } from "@/components/Modal";
+import { Button } from "@/components/Button";
 
 interface SavePromptProps {
   onAuthComplete: () => void;
@@ -42,78 +44,70 @@ export function SavePrompt({ onAuthComplete, onDismiss }: SavePromptProps) {
 
   if (submitted) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-ct-paper/80 backdrop-blur-sm">
-        <div className="mx-4 w-full max-w-sm rounded-[--radius-md] border border-ct-rule bg-ct-paper p-6 shadow-[--shadow-md]">
-          <h3 className="font-display text-lg font-semibold mb-2">Check your email</h3>
-          <p className="font-ui text-sm text-ct-muted">
-            We sent a magic link to <strong>{email}</strong>. Click it to save
-            your work and unlock more generations.
-          </p>
-        </div>
-      </div>
+      <Modal labelledBy="save-prompt-heading">
+        <h3 id="save-prompt-heading" className="font-display text-lg font-semibold mb-2">Check your email</h3>
+        <p className="font-ui text-sm text-ct-muted">
+          We sent a magic link to <strong>{email}</strong>. Click it to save
+          your work and unlock more generations.
+        </p>
+      </Modal>
     );
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ct-paper/80 backdrop-blur-sm">
-      <div className="mx-4 w-full max-w-sm rounded-[--radius-md] border border-ct-rule bg-ct-paper p-6 shadow-[--shadow-md]">
-        <h3 className="font-display text-lg font-semibold mb-1">Sign in</h3>
-        <p className="font-ui text-sm text-ct-muted mb-5">
-          Enter your email to pick up where you left off and unlock more
-          generations.
+    <Modal onDismiss={onDismiss} labelledBy="save-prompt-heading">
+      <h3 id="save-prompt-heading" className="font-display text-lg font-semibold mb-1">Sign in</h3>
+      <p className="font-ui text-sm text-ct-muted mb-5">
+        Enter your email to pick up where you left off and unlock more
+        generations.
+      </p>
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <input
+          id="sign-in-email"
+          name="sign-in-email"
+          type="email"
+          required
+          placeholder="you@example.com"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className="ct-input"
+        />
+
+        <label className="flex items-start gap-2 cursor-pointer">
+          <input
+            id="marketing-consent"
+            name="marketing-consent"
+            type="checkbox"
+            checked={marketingConsent}
+            onChange={(e) => setMarketingConsent(e.target.checked)}
+            className="mt-0.5 rounded-[--radius-sm] border-ct-rule"
+          />
+          <span className="font-ui text-sm text-ct-muted">
+            Keep me posted on new features
+          </span>
+        </label>
+
+        <p className="text-[length:--text-xs] text-ct-muted">
+          I will never sell your personal information. Your email is used to
+          save your project and, if you opt in, to hear about updates.
+          That&apos;s it.{" "}
+          <a href="/privacy" className="underline hover:text-ct-ink">
+            Privacy policy
+          </a>
         </p>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <input
-            type="email"
-            required
-            placeholder="you@example.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="ct-input"
-          />
+        {error && <p className="font-ui text-sm text-ct-strike">{error}</p>}
 
-          <label className="flex items-start gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={marketingConsent}
-              onChange={(e) => setMarketingConsent(e.target.checked)}
-              className="mt-0.5 rounded-[--radius-sm] border-ct-rule"
-            />
-            <span className="font-ui text-sm text-ct-muted">
-              Keep me posted on new features
-            </span>
-          </label>
-
-          <p className="text-[length:--text-xs] text-ct-muted">
-            I will never sell your personal information. Your email is used to
-            save your project and, if you opt in, to hear about updates.
-            That&apos;s it.{" "}
-            <a href="/privacy" className="underline hover:text-ct-ink">
-              Privacy policy
-            </a>
-          </p>
-
-          {error && <p className="font-ui text-sm text-ct-strike">{error}</p>}
-
-          <div className="flex items-center justify-between">
-            <button
-              type="button"
-              onClick={onDismiss}
-              className="font-ui text-sm text-ct-muted hover:text-ct-ink transition-colors"
-            >
-              Not now
-            </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="ct-btn ct-btn-primary disabled:opacity-50"
-            >
-              {loading ? "Sending..." : "Send Magic Link"}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        <div className="flex items-center justify-between">
+          <Button variant="ghost" type="button" onClick={onDismiss}>
+            Not now
+          </Button>
+          <Button variant="primary" type="submit" disabled={loading} className="disabled:opacity-50">
+            {loading ? "Sending..." : "Send Magic Link"}
+          </Button>
+        </div>
+      </form>
+    </Modal>
   );
 }

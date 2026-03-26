@@ -4,6 +4,8 @@ import { useState } from "react";
 import type { BrandContext } from "@/lib/session-storage";
 import { newContextId, saveBrandContext } from "@/lib/session-storage";
 import { ServiceUnavailable } from "@/components/ServiceUnavailable";
+import { Button } from "@/components/Button";
+import { Field } from "@/components/Field";
 
 interface BrandContextFormProps {
   initial?: Partial<BrandContext>;
@@ -41,32 +43,38 @@ export function BrandContextForm({ initial, onComplete }: BrandContextFormProps)
   async function handleFinish() {
     setLoading(true);
     try {
-      if (form.source_url) {
+      // Build up an enriched copy of form instead of mutating `form` directly.
+      // Direct mutation of useState objects is a React antipattern — React can't
+      // detect the change, so the UI won't reflect intermediate updates, and
+      // concurrent renders may read partially-mutated state.
+      let enriched = { ...form };
+
+      if (enriched.source_url) {
         try {
           const res = await fetch("/api/extract", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ url: form.source_url, type: "source" }),
+            body: JSON.stringify({ url: enriched.source_url, type: "source" }),
           });
           if (res.ok) {
             const data = await res.json();
-            form.source_content = data;
+            enriched = { ...enriched, source_content: data };
           }
         } catch {
           // Non-blocking
         }
       }
 
-      if (form.competitor_url) {
+      if (enriched.competitor_url) {
         try {
           const res = await fetch("/api/extract", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ url: form.competitor_url, type: "competitor" }),
+            body: JSON.stringify({ url: enriched.competitor_url, type: "competitor" }),
           });
           if (res.ok) {
             const data = await res.json();
-            form.competitor_analysis = data.analysis;
+            enriched = { ...enriched, competitor_analysis: data.analysis };
           }
         } catch {
           // Non-blocking
@@ -76,11 +84,11 @@ export function BrandContextForm({ initial, onComplete }: BrandContextFormProps)
       const voiceRes = await fetch("/api/voice", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify(enriched),
       });
       if (voiceRes.ok) {
         const data = await voiceRes.json();
-        form.voice_profile = data.voice_profile;
+        enriched = { ...enriched, voice_profile: data.voice_profile };
       } else {
         const data = await voiceRes.json();
         if (data.service_unavailable === "spend_limit") {
@@ -90,7 +98,7 @@ export function BrandContextForm({ initial, onComplete }: BrandContextFormProps)
         }
       }
 
-      const ctx = form as BrandContext;
+      const ctx = enriched as BrandContext;
       saveBrandContext(ctx);
       onComplete(ctx);
     } finally {
@@ -176,55 +184,10 @@ export function BrandContextForm({ initial, onComplete }: BrandContextFormProps)
       </div>
 
       <div className="mt-8 flex justify-end">
-        <button
-          onClick={handleFinish}
-          disabled={!canSubmit() || loading}
-          className="ct-btn ct-btn-primary"
-        >
+        <Button variant="primary" onClick={handleFinish} disabled={!canSubmit() || loading}>
           {loading ? "Setting up..." : "Create Voice Profile"}
-        </button>
+        </Button>
       </div>
     </div>
-  );
-}
-
-function Field({
-  label,
-  placeholder,
-  value,
-  onChange,
-  multiline,
-  maxLength,
-}: {
-  label: string;
-  placeholder: string;
-  value: string;
-  onChange: (v: string) => void;
-  multiline?: boolean;
-  maxLength?: number;
-}) {
-  return (
-    <label className="block">
-      <span className="ct-label">{label}</span>
-      {multiline ? (
-        <textarea
-          placeholder={placeholder}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          maxLength={maxLength}
-          rows={3}
-          className="ct-textarea resize-none"
-        />
-      ) : (
-        <input
-          type="text"
-          placeholder={placeholder}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          maxLength={maxLength}
-          className="ct-input"
-        />
-      )}
-    </label>
   );
 }

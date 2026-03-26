@@ -1,3 +1,5 @@
+import { Button } from "@/components/Button";
+
 interface LandingHeroProps {
   onStart: () => void;
 }
@@ -32,13 +34,13 @@ export function LandingHero({ onStart }: LandingHeroProps) {
             AI-powered copy that remembers your voice.
           </p>
 
-          <div className="flex flex-col gap-4 mb-8">
+          <ol className="flex flex-col gap-4 mb-8 list-none p-0 m-0">
             {[
               { num: "1", title: "Create Voice Profile", desc: "Describe your brand, audience, and tone" },
               { num: "2", title: "Generate Copy", desc: "AI writes in your voice, for any format" },
               { num: "3", title: "Edit & Export", desc: "Refine in an interactive editor" },
             ].map((step) => (
-              <div key={step.num} className="flex items-start gap-3">
+              <li key={step.num} className="flex items-start gap-3">
                 <span
                   className="font-display italic shrink-0 leading-none"
                   style={{ fontSize: "var(--text-3xl)" }}
@@ -56,13 +58,13 @@ export function LandingHero({ onStart }: LandingHeroProps) {
                     {step.desc}
                   </p>
                 </div>
-              </div>
+              </li>
             ))}
-          </div>
+          </ol>
 
-          <button className="ct-btn ct-btn-primary" onClick={onStart}>
+          <Button variant="primary" onClick={onStart}>
             Get Started — Free
-          </button>
+          </Button>
         </div>
 
         {/* Right column — mock editor preview */}

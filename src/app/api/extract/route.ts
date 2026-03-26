@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as cheerio from "cheerio";
 import { prompt, ServiceUnavailableError } from "@/lib/anthropic";
+import { parseJson } from "@/lib/parse-json";
 
 const MAX_BODY_SIZE = 1_000_000; // 1MB
 const FETCH_TIMEOUT = 10_000; // 10s
@@ -137,8 +138,3 @@ ${extractedText}`,
   }
 }
 
-function parseJson(text: string): Record<string, unknown> {
-  // Strip markdown code fences if present
-  const cleaned = text.replace(/^```(?:json)?\s*\n?/m, "").replace(/\n?```\s*$/m, "");
-  return JSON.parse(cleaned);
-}

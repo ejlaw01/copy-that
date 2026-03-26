@@ -1,5 +1,8 @@
 "use client";
 
+import { Modal } from "@/components/Modal";
+import { Button } from "@/components/Button";
+
 interface ConfirmDialogProps {
   message: string;
   confirmLabel?: string;
@@ -16,24 +19,16 @@ export function ConfirmDialog({
   onCancel,
 }: ConfirmDialogProps) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ct-paper/80 backdrop-blur-sm">
-      <div className="w-full max-w-sm rounded-[--radius-md] border border-ct-rule bg-ct-paper p-6 shadow-lg">
-        <p className="text-sm text-ct-ink">{message}</p>
-        <div className="mt-5 flex items-center justify-end gap-3">
-          <button
-            onClick={onCancel}
-            className="ct-btn ct-btn-secondary text-xs"
-          >
-            {cancelLabel}
-          </button>
-          <button
-            onClick={onConfirm}
-            className="ct-btn text-xs bg-ct-strike text-white"
-          >
-            {confirmLabel}
-          </button>
-        </div>
+    <Modal onDismiss={onCancel} labelledBy="confirm-dialog-message">
+      <p id="confirm-dialog-message" className="text-sm text-ct-ink">{message}</p>
+      <div className="mt-5 flex items-center justify-end gap-3">
+        <Button variant="secondary" size="sm" onClick={onCancel}>
+          {cancelLabel}
+        </Button>
+        <Button variant="danger" size="sm" onClick={onConfirm}>
+          {confirmLabel}
+        </Button>
       </div>
-    </div>
+    </Modal>
   );
 }

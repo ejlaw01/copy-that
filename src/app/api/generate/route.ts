@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prompt, ServiceUnavailableError } from "@/lib/anthropic";
+import { parseJson } from "@/lib/parse-json";
 import {
   CONTENT_CATEGORIES,
   CATEGORY_KEYS,
@@ -139,7 +140,7 @@ Respond with ONLY valid JSON matching this exact structure:
         : buildRetryPrompt(bestParsed!, maxChars);
 
       const result = await prompt(systemMsg, msgToSend, 2048);
-      const parsed = parseResponse(result);
+      const parsed = parseJson(result);
       const contentStr = typeof parsed.content === "string"
         ? parsed.content
         : String(parsed.content ?? "");
@@ -204,13 +205,6 @@ Respond with ONLY valid JSON matching this exact structure:
   }
 }
 
-function parseResponse(text: string): Record<string, unknown> {
-  const cleaned = text
-    .replace(/^```(?:json)?\s*\n?/m, "")
-    .replace(/\n?```\s*$/m, "")
-    .trim();
-  return JSON.parse(cleaned);
-}
 
 function buildRetryPrompt(
   previousParsed: Record<string, unknown>,
