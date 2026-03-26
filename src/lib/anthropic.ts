@@ -12,6 +12,28 @@ export class ServiceUnavailableError extends Error {
   }
 }
 
+/**
+ * Streaming counterpart to prompt(). Returns the SDK's MessageStream object,
+ * which is an async iterable of text delta events. The caller reads chunks
+ * as they arrive and forwards them to the client.
+ *
+ * Error handling stays with the caller — the SDK throws the same APIError
+ * types on stream creation (auth, rate limit, billing) as on non-streaming
+ * calls, so the existing ServiceUnavailableError mapping in the route works.
+ */
+export function streamPrompt(
+  system: string,
+  user: string,
+  maxTokens = 2048
+) {
+  return anthropic.messages.stream({
+    model: "claude-sonnet-4-20250514",
+    max_tokens: maxTokens,
+    system,
+    messages: [{ role: "user", content: user }],
+  });
+}
+
 export async function prompt(
   system: string,
   user: string,

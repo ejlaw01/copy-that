@@ -101,10 +101,11 @@ interface ComponentEditorProps {
   onChange: (json: TipTapDoc) => void;
   onConstraintsChange?: (maxChars?: number) => void;
   singleLine?: boolean;
+  editable?: boolean;
 }
 
 export const ComponentEditor = forwardRef<ComponentEditorHandle, ComponentEditorProps>(
-  function ComponentEditor({ content, maxChars, onChange, onConstraintsChange, singleLine }, ref) {
+  function ComponentEditor({ content, maxChars, onChange, onConstraintsChange, singleLine, editable = true }, ref) {
   const [showSource, setShowSource] = useState(false);
     const [editingConstraints, setEditingConstraints] = useState(false);
   const [sourceHtml, setSourceHtml] = useState("");
@@ -171,6 +172,13 @@ export const ComponentEditor = forwardRef<ComponentEditorHandle, ComponentEditor
       }
     }
   }, [editor, content]);
+
+  // Sync the editable prop to the TipTap editor instance at runtime.
+  // useEditor doesn't re-create when props change, so we toggle via the
+  // imperative setEditable() API instead.
+  useEffect(() => {
+    if (editor) editor.setEditable(editable);
+  }, [editor, editable]);
 
   const charCount = editor?.storage.characterCount.characters() ?? 0;
 

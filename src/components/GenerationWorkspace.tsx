@@ -200,6 +200,8 @@ export function GenerationWorkspace({
   pickerSlot,
 }: GenerationWorkspaceProps) {
   const [generating, setGenerating] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [streamText, setStreamText] = useState("");
   const [copied, setCopied] = useState(false);
   const [canSave, setCanSave] = useState(false);
   const [categoryOpen, setCategoryOpen] = useState(false);
@@ -502,13 +504,36 @@ export function GenerationWorkspace({
     if (!isRefining && !userPrompt.trim()) return;
     if (!canGenerate) return;
     setGenerating(true);
+    // Only stream fresh generations — refinement keeps the editor visible
+    // with a spinner, since wiping and rewriting feels like starting over.
+    const shouldStream = !isRefining;
+    if (shouldStream) {
+      setIsStreaming(true);
+      setStreamText("");
+    }
     setError(null);
     setSoftLimit(false);
     setConstraintWarning(null);
 
+    // On a fresh generation, set a placeholder block so the UI switches
+    // from the +New form (category/prompt) to the block view (editor area)
+    // before streaming starts. The placeholder is never persisted — it's
+    // replaced by the real block on completion.
+    if (!isRefining) {
+      setCurrentBlock({
+        id: "__streaming__",
+        slug: "",
+        brand_context_id: context!.id,
+        component_type: category,
+        user_prompt: userPrompt,
+        content: { type: "doc", content: [] },
+        ai_notes: null,
+        version: 1,
+        created_at: new Date().toISOString(),
+      });
+    }
+
     // Auto-save current RTE content as a version before regenerating.
-    // The snapshot inherits the slug from the current block so all
-    // versions of the same document share a single URL slug.
     let updatedHistory = history;
     if (isRefining && currentBlock) {
       const snapshot: CopyBlock = {
@@ -525,11 +550,12 @@ export function GenerationWorkspace({
     }
 
     try {
-      // Ensure voice profile exists (lazy creation)
       const ctx = await ensureContext();
       if (!ctx) {
         setError("Please fill in all required brand fields first.");
         setGenerating(false);
+        if (shouldStream) setIsStreaming(false);
+        if (!isRefining) setCurrentBlock(null);
         return;
       }
 
@@ -544,7 +570,6 @@ export function GenerationWorkspace({
           source_content: ctx.source_content,
           turnstile_token: turnstileTokenRef.current,
           ...(maxChars !== undefined && { max_chars: maxChars }),
-          // Refinement fields — server constructs the prompt from these
           ...(isRefining && {
             feedback: feedback.trim(),
             current_copy: docToPlainText(currentBlock!.content as TipTapDoc),
@@ -552,6 +577,9 @@ export function GenerationWorkspace({
         }),
       });
 
+      // Non-streaming error responses (rate limit, validation) come back as
+      // regular JSON with a non-200 status. Handle them before trying to read
+      // the SSE stream.
       if (!res.ok) {
         const data = await res.json();
         if (data.limit_reached && !data.soft_limit) {
@@ -572,18 +600,108 @@ export function GenerationWorkspace({
         throw new Error(data.error || "Generation failed");
       }
 
-      const data = await res.json();
-      incrementGenerationCount();
+      // ── Read the SSE stream ─────────────────────────────────
+      // We use getReader() + manual SSE line parsing rather than EventSource
+      // because EventSource only supports GET requests — we need POST.
+      const reader = res.body!.getReader();
+      const decoder = new TextDecoder();
 
-      if (data.constraint_warning) {
-        setConstraintWarning(data.constraint_warning);
+      // rAF batching: accumulate delta text between animation frames
+      // to avoid one React render per token (~100+/sec). Instead we
+      // flush once per frame (~60fps) — a 40x reduction in renders.
+      let deltaBuffer = "";
+      let rafId: number | null = null;
+
+      function flushDeltaBuffer() {
+        if (deltaBuffer) {
+          const chunk = deltaBuffer;
+          deltaBuffer = "";
+          setStreamText((prev) => prev + chunk);
+        }
+        rafId = null;
       }
 
-      // Generate a URL slug from the LLM-provided title (or category fallback).
-      // Deduplicate against all blocks in the current history so each
-      // document has a unique slug within the profile.
+      let sseBuffer = "";
+      interface StreamComplete {
+        title: string;
+        content: TipTapDoc;
+        ai_notes: { generation_reasoning: string; suggestions: string[] };
+        max_chars?: number;
+        constraint_warning?: string;
+      }
+      let completeData: StreamComplete | null = null;
+      // Tracks errors from SSE error events so we can propagate them
+      // after cleaning up the reader — avoids fragile string matching.
+      let streamError: Error | null = null;
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          sseBuffer += decoder.decode(value, { stream: true });
+
+          const lines = sseBuffer.split("\n");
+          sseBuffer = lines.pop() ?? "";
+
+          for (const line of lines) {
+            if (!line.startsWith("data: ")) continue;
+            const json = line.slice(6);
+            if (!json) continue;
+
+            let event: Record<string, unknown>;
+            try {
+              event = JSON.parse(json);
+            } catch {
+              // Malformed JSON line — skip it
+              continue;
+            }
+
+            if (event.type === "delta") {
+              if (shouldStream) {
+                deltaBuffer += event.text;
+                if (!rafId) {
+                  rafId = requestAnimationFrame(flushDeltaBuffer);
+                }
+              }
+            } else if (event.type === "complete") {
+              completeData = event as unknown as StreamComplete;
+            } else if (event.type === "error") {
+              if (event.service_unavailable === "spend_limit") {
+                setServiceDown(true);
+              }
+              streamError = new Error((event.error as string) || "Generation failed");
+            }
+          }
+        }
+      } finally {
+        // Always close the reader and clean up the rAF — whether the
+        // loop completed normally, threw, or hit a stream error.
+        reader.cancel();
+        if (rafId) cancelAnimationFrame(rafId);
+        flushDeltaBuffer();
+      }
+
+      if (streamError) throw streamError;
+
+      if (!completeData) {
+        throw new Error("Stream ended without completion data");
+      }
+
+      // ── Finalize: same post-response logic as before ────────
+      // setIsStreaming(false) must come AFTER all state updates.
+      // setActiveBlock triggers onBlockChange → URL hash update →
+      // resolvedBlockId change → block-change effect. If the new block
+      // isn't in history yet when that effect runs, it won't find it.
+      // Batching everything before the streaming flag ensures one clean render.
+      incrementGenerationCount();
+
+      if (completeData.constraint_warning) {
+        setConstraintWarning(completeData.constraint_warning);
+      }
+
       const blockSlug = uniqueSlug(
-        slugify(data.title || category),
+        slugify(completeData.title || category),
         updatedHistory.map((b) => b.slug).filter(Boolean),
       );
 
@@ -592,10 +710,10 @@ export function GenerationWorkspace({
         slug: blockSlug,
         brand_context_id: ctx.id,
         component_type: category,
-        title: data.title || "",
+        title: completeData.title || "",
         user_prompt: userPrompt,
-        content: data.content,
-        ai_notes: data.ai_notes,
+        content: completeData.content,
+        ai_notes: completeData.ai_notes,
         ...(maxChars !== undefined && { max_chars: maxChars }),
         version: 1,
         created_at: new Date().toISOString(),
@@ -603,16 +721,21 @@ export function GenerationWorkspace({
 
       saveCopyBlock(block);
       syncBlock(block);
+      setHistory((prev) => [block, ...prev]);
       setActiveBlock(block.id);
       ignoreNextChangeRef.current = true;
       setCurrentBlock(block);
-      setAiNotes(data.ai_notes);
+      setAiNotes(completeData.ai_notes);
       setUserPrompt(block.user_prompt ?? "");
       setFeedback("");
       setCanSave(false);
-      setHistory((prev) => [block, ...prev]);
       onGenerate?.();
     } catch (err) {
+      // If we set a placeholder block for a fresh generation, clear it
+      // so the UI falls back to the +New form.
+      if (!isRefining) {
+        setCurrentBlock(null);
+      }
       if (err instanceof Error && err.message === "service_unavailable") {
         setServiceDown(true);
       } else {
@@ -620,6 +743,7 @@ export function GenerationWorkspace({
       }
     } finally {
       setGenerating(false);
+      setIsStreaming(false);
       turnstileRef.current?.reset();
     }
   }
@@ -1051,9 +1175,23 @@ export function GenerationWorkspace({
             )}
           </div>
 
-          {/* Output — Editor (full width) */}
-          {currentBlock && (
-            <div className="space-y-4">
+          {/* Streaming overlay — shows text as it arrives from the LLM.
+              Rendered in a plain div (not TipTap) to avoid ProseMirror
+              rebuilding its document tree on every token. Styled to match
+              the editor surface so the transition feels seamless. */}
+          {isStreaming && (
+            <div className="rounded-[--radius-lg] bg-white dark:bg-ct-cream shadow-[var(--shadow-md)]">
+              <div className="prose dark:prose-invert max-w-none px-8 pt-12 pb-18 min-h-[8rem] whitespace-pre-wrap">
+                {streamText}
+                <span className="inline-block w-[2px] h-[1.1em] bg-ct-accent align-text-bottom animate-pulse" />
+              </div>
+            </div>
+          )}
+
+          {/* Output — Editor (full width). Hidden during streaming since the
+              overlay occupies the same visual role. */}
+          {currentBlock && !isStreaming && (
+            <div className="space-y-4 animate-fade-in">
               <ComponentEditor
                 ref={editorRef}
                 content={currentBlock.content as TipTapDoc}
@@ -1061,6 +1199,7 @@ export function GenerationWorkspace({
                 maxChars={maxChars}
                 onConstraintsChange={(mc) => setMaxChars(mc)}
                 singleLine={CONTENT_CATEGORIES[category]?.singleLine}
+                editable={!isStreaming}
               />
 
               {constraintWarning && (
@@ -1276,6 +1415,7 @@ export function GenerationWorkspace({
                 <textarea
                   id="feedback-prompt"
                   name="feedback-prompt"
+                  disabled={generating}
                   value={feedback}
                   onChange={(e) => setFeedback(e.target.value)}
                   onKeyDown={handleFeedbackKeyDown}
