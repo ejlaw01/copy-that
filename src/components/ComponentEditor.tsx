@@ -338,6 +338,8 @@ export const ComponentEditor = forwardRef<ComponentEditorHandle, ComponentEditor
         {/* Editor or source view */}
         {showSource ? (
           <textarea
+            id="source-html"
+            name="source-html"
             value={sourceHtml}
             onChange={(e) => handleSourceChange(e.target.value)}
             className="w-full min-h-[12rem] bg-transparent rounded-[--radius-lg] px-8 pt-12 pb-8 font-mono text-sm text-ct-ink focus:outline-none"

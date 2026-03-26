@@ -261,16 +261,6 @@ select {
   background: var(--ct-rule);
 }
 
-.ct-btn-ghost {
-  background: transparent;
-  color: var(--ct-accent);
-  border: 1px solid var(--ct-accent);
-}
-
-.ct-btn-ghost:hover {
-  background: var(--ct-accent-light);
-}
-
 /* ============================================================
    TAGS
    ============================================================ */
@@ -286,11 +276,6 @@ select {
   color: var(--ct-accent);
   padding: 2px 10px;
   border-radius: var(--radius-sm);
-}
-
-.ct-tag-neutral {
-  background: var(--ct-cream);
-  color: var(--ct-muted);
 }
 
 /* ============================================================

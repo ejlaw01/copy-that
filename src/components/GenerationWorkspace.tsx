@@ -9,6 +9,7 @@ import {
 } from "@/components/ComponentEditor";
 import { Turnstile, type TurnstileHandle } from "@/components/Turnstile";
 import { ServiceUnavailable } from "@/components/ServiceUnavailable";
+import { Button } from "@/components/Button";
 import { AnimatedEllipsis } from "@/components/AnimatedEllipsis";
 import { CONTENT_CATEGORIES, CATEGORY_KEYS } from "@/lib/component-types";
 import { slugify, uniqueSlug } from "@/lib/slugify";
@@ -1013,7 +1014,7 @@ export function GenerationWorkspace({
                   </p>
                 </details>
               ) : (
-                <label className="ct-label py-3">Prompt</label>
+                <label htmlFor="user-prompt" className="ct-label py-3">Prompt</label>
               )}
               {!currentBlock && (
                 <textarea
@@ -1032,10 +1033,10 @@ export function GenerationWorkspace({
 
             {!currentBlock && (
               <div className="flex items-center justify-end">
-                <button
+                <Button
+                  variant="primary"
                   onClick={handleGenerate}
                   disabled={generating || !userPrompt.trim() || !canGenerate}
-                  className="ct-btn ct-btn-primary"
                 >
                   {generating ? (
                     <>
@@ -1045,7 +1046,7 @@ export function GenerationWorkspace({
                   ) : (
                     "Generate"
                   )}
-                </button>
+                </Button>
               </div>
             )}
           </div>
@@ -1088,13 +1089,15 @@ export function GenerationWorkspace({
                 >
                   Download .md
                 </button>
-                <button
+                <Button
+                  variant="primary"
+                  size="sm"
                   onClick={handleSaveVersion}
                   disabled={!canSave}
-                  className="ml-auto text-xs font-ui text-ct-muted hover:text-ct-ink transition-colors disabled:opacity-40 disabled:hover:text-ct-muted disabled:cursor-default"
+                  className="ml-auto disabled:opacity-40 disabled:cursor-default"
                 >
                   Save Version
-                </button>
+                </Button>
               </div>
 
               {/* Version History */}
@@ -1108,7 +1111,7 @@ export function GenerationWorkspace({
                     of {activeGroup.versions.length} {showVersions ? "▼" : "▶"}
                   </button>
                   {showVersions && (
-                    <div className="mt-2 space-y-1">
+                    <ol className="mt-2 space-y-1 list-none p-0 m-0">
                       {activeGroup.versions.map((version, i) => {
                         const versionNum = activeGroup.versions.length - i;
                         const prevVersion = activeGroup.versions[i + 1];
@@ -1150,7 +1153,7 @@ export function GenerationWorkspace({
                           : nonEmptyLines.slice(0, 3);
 
                         return (
-                          <div
+                          <li
                             key={version.id}
                             onClick={() =>
                               loadBlock(version, { markDirty: true })
@@ -1227,10 +1230,10 @@ export function GenerationWorkspace({
                                 </button>
                               )}
                             </div>
-                          </div>
+                          </li>
                         );
                       })}
-                    </div>
+                    </ol>
                   )}
                 </div>
               )}
@@ -1269,7 +1272,7 @@ export function GenerationWorkspace({
 
               {/* Adjustments */}
               <div>
-                <label className="ct-label">Adjustments</label>
+                <label htmlFor="feedback-prompt" className="ct-label">Adjustments</label>
                 <textarea
                   id="feedback-prompt"
                   name="feedback-prompt"
@@ -1282,10 +1285,10 @@ export function GenerationWorkspace({
                   className="ct-input resize-none"
                 />
                 <div className="flex items-center justify-end mt-1.5">
-                  <button
+                  <Button
+                    variant="primary"
                     onClick={handleGenerate}
                     disabled={generating || !feedback.trim() || !canGenerate}
-                    className="ct-btn ct-btn-primary"
                   >
                     {generating ? (
                       <>
@@ -1295,7 +1298,7 @@ export function GenerationWorkspace({
                     ) : (
                       "Apply"
                     )}
-                  </button>
+                  </Button>
                 </div>
               </div>
             </div>
@@ -1368,13 +1371,9 @@ function SoftLimitCard({ userEmail }: { userEmail?: string | null }) {
             className="ct-input text-sm w-full resize-none"
           />
           <div className="flex items-center gap-3">
-            <button
-              type="submit"
-              disabled={!message.trim() || status === "sending"}
-              className="ct-btn ct-btn-primary text-xs"
-            >
+            <Button variant="primary" size="sm" type="submit" disabled={!message.trim() || status === "sending"}>
               {status === "sending" ? "Sending…" : "Send"}
-            </button>
+            </Button>
             <a
               href="https://bitlore.io"
               className="text-xs text-ct-muted hover:text-ct-ink transition-colors"

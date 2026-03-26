@@ -86,6 +86,10 @@ export const Turnstile = forwardRef<TurnstileHandle, TurnstileProps>(
         window.turnstile.remove(widgetIdRef.current);
         widgetIdRef.current = null;
       }
+      // Clean up the script element and global callback to prevent
+      // accumulation on repeated mounts and stale callback references.
+      script.remove();
+      delete window.onTurnstileLoad;
     };
   }, [renderWidget]);
 

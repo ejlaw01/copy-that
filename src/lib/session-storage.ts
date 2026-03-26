@@ -117,19 +117,6 @@ export function getActiveContext(): BrandContext | null {
   );
 }
 
-export function setActiveBlock(id: string | null): SessionData {
-  const session = getSession();
-  session.active_block_id = id;
-  saveSession(session);
-  return session;
-}
-
-export function getActiveBlock(): CopyBlock | null {
-  const session = getSession();
-  if (!session.active_block_id) return null;
-  return session.copy_blocks.find((b) => b.id === session.active_block_id) ?? null;
-}
-
 // ── Per-profile draft and active block helpers ───────────────
 
 export function saveDraft(contextId: string, draft: DraftPrompt): void {

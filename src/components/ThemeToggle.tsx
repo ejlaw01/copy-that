@@ -3,15 +3,22 @@
 import { useEffect, useState } from "react";
 import { Sun, Moon } from "lucide-react";
 
-export function ThemeToggle() {
-  const [dark, setDark] = useState(false);
+// State initializer reads localStorage synchronously during the first render,
+// avoiding a second render cycle. The useEffect below still handles the DOM
+// side effect (adding the class), but the state is correct from the start
+// so the icon doesn't flash.
+function getInitialTheme(): boolean {
+  if (typeof window === "undefined") return false;
+  return localStorage.getItem("theme") === "dark";
+}
 
+export function ThemeToggle() {
+  const [dark, setDark] = useState(getInitialTheme);
+
+  // Apply the dark class on mount if needed. This runs after first paint
+  // but the state initializer ensures the correct icon renders immediately.
   useEffect(() => {
-    const stored = localStorage.getItem("theme");
-    if (stored === "dark") {
-      setDark(true);
-      document.documentElement.classList.add("dark");
-    }
+    if (dark) document.documentElement.classList.add("dark");
   }, []);
 
   function toggle() {

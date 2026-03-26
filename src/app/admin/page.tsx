@@ -160,14 +160,14 @@ export default async function AdminPage() {
         {stats.topComponents.length > 0 && (
           <section>
             <h2 className="ct-label mb-4">Top Categories</h2>
-            <div className="space-y-2">
+            <ul className="space-y-2 list-none p-0 m-0">
               {stats.topComponents.map(([type, count]) => (
-                <div key={type} className="flex items-center justify-between rounded-[--radius-md] bg-ct-cream px-4 py-2 text-sm">
+                <li key={type} className="flex items-center justify-between rounded-[--radius-md] bg-ct-cream px-4 py-2 text-sm">
                   <span>{type}</span>
                   <span className="text-ct-muted">{count}</span>
-                </div>
+                </li>
               ))}
-            </div>
+            </ul>
           </section>
         )}
 
