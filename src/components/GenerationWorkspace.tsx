@@ -14,6 +14,7 @@ import { AnimatedEllipsis } from "@/components/AnimatedEllipsis";
 import { CONTENT_CATEGORIES, CATEGORY_KEYS } from "@/lib/component-types";
 import { slugify, uniqueSlug } from "@/lib/slugify";
 import type { TipTapDoc } from "@/lib/tiptap-utils";
+import { withViewTransition } from "@/lib/view-transition";
 import {
   saveCopyBlock,
   saveCopyBlockWithSync,
@@ -779,8 +780,10 @@ export function GenerationWorkspace({
 
   function loadBlock(block: CopyBlock, { markDirty = false } = {}) {
     saveDraftIfNeeded();
-    setActiveBlock(block.id);
-    loadBlockInternal(block, { markDirty });
+    withViewTransition(() => {
+      setActiveBlock(block.id);
+      loadBlockInternal(block, { markDirty });
+    });
   }
 
   async function handleCopy() {

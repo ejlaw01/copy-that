@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { useHashRoute } from "@/lib/use-hash-route";
 import { slugify, uniqueSlug } from "@/lib/slugify";
+import { withViewTransition } from "@/lib/view-transition";
 import {
   getSession,
   setSession,
@@ -123,16 +124,20 @@ export function useAppSession() {
   function switchToProfile(id: string) {
     const ctx = contexts.find((c) => c.id === id);
     if (!ctx) return;
-    navigate(ctx.slug);
-    setActiveContext(id);
-    applyProfilePanel(ctx);
+    withViewTransition(() => {
+      navigate(ctx.slug);
+      setActiveContext(id);
+      applyProfilePanel(ctx);
+    });
   }
 
   function switchToNew() {
     if (contexts.length >= MAX_PROFILES) return;
-    navigate("new");
-    setForm(emptyForm());
-    setEditing(true);
+    withViewTransition(() => {
+      navigate("new");
+      setForm(emptyForm());
+      setEditing(true);
+    });
   }
 
   function handleDelete(id: string) {

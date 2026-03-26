@@ -22,7 +22,7 @@ const lato = Lato({
 });
 
 export const metadata: Metadata = {
-  title: "Copy That — Website Copy Generator",
+  title: "Copy That | Website Copy Generator",
   description: "Generate professional website copy for your small business. Powered by AI, built by Bit Lore.",
 };
 

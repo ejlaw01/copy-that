@@ -7,6 +7,7 @@ import { ProfileNav } from "@/components/ProfileNav";
 import { BrandForm } from "@/components/BrandForm";
 import { AnimatedEllipsis } from "@/components/AnimatedEllipsis";
 import { useAppSession } from "@/lib/use-app-session";
+import { withViewTransition } from "@/lib/view-transition";
 import {
   getSession,
   setActiveBlockForContext,
@@ -35,7 +36,7 @@ export default function Home() {
   if (s.showHero) {
     return (
       <AppShell session={s}>
-        <LandingHero onStart={() => s.navigate("new")} />
+        <LandingHero onStart={() => withViewTransition(() => s.navigate("new"))} />
       </AppShell>
     );
   }
@@ -47,13 +48,17 @@ export default function Home() {
   }
 
   function handleEditClick() {
-    s.setForm(s.activeContext!);
-    s.setEditing(true);
+    withViewTransition(() => {
+      s.setForm(s.activeContext!);
+      s.setEditing(true);
+    });
   }
 
   function handleCancelEdit() {
-    s.setForm(s.activeContext!);
-    s.setEditing(false);
+    withViewTransition(() => {
+      s.setForm(s.activeContext!);
+      s.setEditing(false);
+    });
   }
 
   function handleDeleteClick() {

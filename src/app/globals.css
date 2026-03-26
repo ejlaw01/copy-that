@@ -298,6 +298,21 @@ select {
    ANIMATIONS
    ============================================================ */
 
+/* View Transitions — shorten the default 250ms cross-fade to 150ms
+   for a snappier feel. The ::view-transition pseudo-elements are
+   created by the browser when document.startViewTransition() runs. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 150ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
+}
+
 @keyframes fade-in {
   from { opacity: 0; }
   to   { opacity: 1; }
