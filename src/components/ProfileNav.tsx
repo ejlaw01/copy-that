@@ -98,7 +98,7 @@ export function ProfileNav({
 
       {/* Row 2 — Copy block tabs with tree connector */}
       <div
-        className="flex items-end px-6"
+        className="relative flex items-end px-6 before:absolute before:inset-x-0 before:top-0 before:h-[34px] before:bg-ct-cream before:-z-1"
         style={{
           backgroundImage: 'linear-gradient(to bottom, transparent 33px, var(--ct-rule) 33px, var(--ct-rule) 34px, transparent 34px)',
           backgroundSize: '100% 34px',

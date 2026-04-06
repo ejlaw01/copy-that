@@ -932,7 +932,7 @@ export function GenerationWorkspace({
             className={`relative shrink-0 rounded-t-[4px] text-xs border h-[30px] mt-1 transition-colors ${
               isActive
                 ? "bg-ct-paper text-ct-ink border-ct-rule border-b-transparent"
-                : "bg-ct-cream text-ct-muted hover:text-ct-ink border-transparent border-b-ct-rule"
+                : "bg-ct-cream text-ct-muted hover:text-ct-ink border-ct-rule/60 border-b-ct-rule"
             }`}
           >
             <button
