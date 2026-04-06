@@ -932,7 +932,7 @@ export function GenerationWorkspace({
             className={`relative shrink-0 rounded-t-[4px] text-xs border h-[30px] mt-1 transition-colors ${
               isActive
                 ? "bg-ct-paper text-ct-ink border-ct-rule border-b-transparent"
-                : "bg-ct-cream text-ct-muted hover:bg-ct-rule hover:text-ct-ink border-transparent border-b-ct-rule"
+                : "bg-ct-cream text-ct-muted hover:text-ct-ink border-transparent border-b-ct-rule"
             }`}
           >
             <button
@@ -973,7 +973,7 @@ export function GenerationWorkspace({
               }}
               className={`absolute right-1 top-1/2 -translate-y-1/2 z-10 flex items-center justify-center w-5 h-5 rounded-full transition-colors cursor-pointer ${
                 isActive
-                  ? "text-ct-rule hover:text-ct-strike hover:bg-ct-strike/10"
+                  ? "text-ct-muted hover:text-ct-strike hover:bg-ct-strike/10"
                   : "opacity-0 pointer-events-none"
               }`}
               aria-label={`Delete ${group.title || group.label}`}
@@ -1018,7 +1018,7 @@ export function GenerationWorkspace({
         className={`shrink-0 rounded-t-[4px] px-3 text-xs font-ui border h-[30px] mt-1 flex items-center transition-colors ${
           !currentBlock
             ? "bg-ct-paper text-ct-ink border-ct-rule border-b-transparent"
-            : "border-dashed border-ct-rule text-ct-muted hover:text-ct-ink hover:border-ct-muted bg-transparent border-b-solid border-b-ct-rule"
+            : "border-dashed border-ct-rule text-ct-muted hover:text-ct-ink bg-transparent border-b-solid border-b-ct-rule"
         }`}
       >
         + New

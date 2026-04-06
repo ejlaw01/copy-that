@@ -35,7 +35,7 @@ export function ProfileNav({
   return (
     <nav aria-label="Profile navigation">
       {/* Row 1 — Profile + details */}
-      <div className="flex items-center gap-3 py-3 px-6">
+      <div className="flex items-center gap-3 py-3 px-6 bg-ct-cream">
         <div ref={profileMenuRef} className="relative shrink-0">
           <button
             onClick={onToggleMenu}

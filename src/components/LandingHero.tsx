@@ -79,6 +79,7 @@ export function LandingHero({ onStart }: LandingHeroProps) {
       <div className="mx-auto max-w-5xl grid md:grid-cols-2 gap-12 md:gap-16 items-center">
         {/* Left column */}
         <div
+          className="order-2 md:order-1"
           style={{
             animation: "hero-enter 0.5s ease-out both",
           }}
@@ -140,7 +141,7 @@ export function LandingHero({ onStart }: LandingHeroProps) {
         </div>
 
         {/* Right column — mock editor preview */}
-        <div className="flex justify-center md:justify-end px-6 pt-6 md:px-0 md:pt-0 md:pr-6">
+        <div className="order-1 md:order-2 flex justify-center md:justify-end px-6 pt-6 md:px-0 md:pt-0 md:pr-6">
           <div className="@container relative w-full">
             {/* Prompt card — drops in first */}
             <div
