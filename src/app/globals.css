@@ -322,6 +322,44 @@ select {
   animation: fade-in 0.3s ease-out;
 }
 
+@keyframes hero-enter {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes note-enter {
+  0% {
+    opacity: 0;
+    transform: translateY(-20px) rotate(2deg);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) rotate(0deg);
+  }
+}
+
+@keyframes page-slide-in {
+  0% {
+    opacity: 0;
+    transform: translate(100vw, 80px) rotate(12deg);
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+    transform: translate(0, 0) rotate(-3deg);
+  }
+}
+
+
+
 /* ============================================================
    PROSE & PROSEMIRROR — RTE typography overrides
    ============================================================ */
