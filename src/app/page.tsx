@@ -32,11 +32,24 @@ export default function Home() {
     );
   }
 
-  // ── First-time visitor hero ────────────────────────────────────
+  // ── First-time visitor hero + inline form ─────────────────────
   if (s.showHero) {
     return (
       <AppShell session={s}>
-        <LandingHero onStart={() => withViewTransition(() => s.navigate("new"))} />
+        <LandingHero onStart={() => {
+          document.getElementById("start")?.scrollIntoView({ behavior: "smooth" });
+        }} />
+        <main id="start" className="px-6 py-8">
+          <div className="mx-auto max-w-4xl">
+            <BrandForm
+              form={s.form}
+              update={s.update}
+              canGenerate={s.canGenerate}
+              isNew
+              onSave={s.handleSaveNew}
+            />
+          </div>
+        </main>
       </AppShell>
     );
   }
