@@ -135,9 +135,18 @@ export function LandingHero({ onStart }: LandingHeroProps) {
             ))}
           </ol>
 
-          <Button variant="primary" onClick={onStart}>
-            Get Started
-          </Button>
+          <div className="flex items-center gap-4">
+            <Button variant="primary" onClick={onStart}>
+              Get Started
+            </Button>
+            <a
+              href="/demo"
+              className="font-ui text-ct-accent hover:text-ct-accent-hover transition-colors"
+              style={{ fontSize: "var(--text-sm)" }}
+            >
+              See a demo
+            </a>
+          </div>
         </div>
 
         {/* Right column — mock editor preview */}
@@ -181,7 +190,7 @@ export function LandingHero({ onStart }: LandingHeroProps) {
                   : "none",
               }}
             >
-              {/* SVG page shape */}
+              {/* SVG page shape — mask clips the fold shadow to the page boundary */}
               <svg
                 className="absolute inset-0 w-full h-full"
                 viewBox="0 0 300 400"
@@ -189,14 +198,29 @@ export function LandingHero({ onStart }: LandingHeroProps) {
                 aria-hidden="true"
                 style={{ filter: "drop-shadow(0 4px 12px rgba(28,25,23,0.10))" }}
               >
-                <polygon
-                  points="0,0 300,0 300,400 38,400 0,362"
-                  className="fill-white dark:fill-ct-cream"
-                />
-                <path
-                  d="M0,362 C12.158,362 24.044,360.603 38,355.791 C37.093,372.118 35.564,381.083 38,400 L0,362 Z"
-                  className="fill-ct-rule"
-                />
+                <defs>
+                  <polygon id="page-shape" points="0 0 300 0 300 400 37.953 400 0 362.164" />
+                  <path id="fold-shape" d="M0,362 C13.113,360.987 20.023,358.284 28.951,348.559 C35.564,368.22 37.396,379.169 38,400 L0,362 Z" />
+                  <filter id="fold-shadow" x="-54.1%" y="-38.7%" width="201.8%" height="179.5%" filterUnits="objectBoundingBox">
+                    <feMorphology radius="1" operator="dilate" in="SourceAlpha" result="spread" />
+                    <feOffset dx="0" dy="0" in="spread" result="offset" />
+                    <feGaussianBlur stdDeviation="5" in="offset" result="blur" />
+                    <feColorMatrix values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0 0" type="matrix" in="blur" />
+                  </filter>
+                  <mask id="page-mask">
+                    <use href="#page-shape" fill="white" />
+                  </mask>
+                </defs>
+                <g mask="url(#page-mask)">
+                  <polygon
+                    points="0,0 300,0 300,400 38,400 0,362"
+                    className="fill-white dark:fill-ct-cream"
+                  />
+                  <g>
+                    <use href="#fold-shape" fill="black" fillOpacity="1" filter="url(#fold-shadow)" />
+                    <use href="#fold-shape" className="fill-ct-rule" />
+                  </g>
+                </g>
               </svg>
 
               {/* Text content — typed out.

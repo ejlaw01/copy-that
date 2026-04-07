@@ -57,6 +57,7 @@ export function useAppSession() {
   const isAuthenticatedRef = useRef(false);
   const [sessionIndicator, setSessionIndicator] = useState(false);
   const [syncStatus, setSyncStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [isDemo, setIsDemo] = useState(false);
   const syncTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [confirmDialog, setConfirmDialog] = useState<{ message: string; onConfirm: () => void } | null>(null);
   const [extractWarning, setExtractWarning] = useState<string | null>(null);
@@ -374,6 +375,19 @@ export function useAppSession() {
     let cancelled = false;
 
     async function init() {
+      // Demo mode: skip auth, hydrate from seeded sessionStorage
+      const demoFlag = sessionStorage.getItem("copythat_demo") === "1";
+      if (demoFlag) {
+        setIsDemo(true);
+        setAuthChecked(true);
+        const session = getSession();
+        if (session.brand_contexts.length > 0) {
+          hydrateFromSession(session);
+        }
+        setIsLoading(false);
+        return;
+      }
+
       const { data: { user } } = await supabase.auth.getUser();
 
       if (cancelled) return;
@@ -457,6 +471,7 @@ export function useAppSession() {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        if (sessionStorage.getItem("copythat_demo") === "1") return;
         if (event === "SIGNED_IN" && session?.user) {
           setUserEmail(session.user.email ?? null);
           isAuthenticatedRef.current = true;
@@ -601,6 +616,7 @@ export function useAppSession() {
     isLoading,
     authChecked,
     isAuthenticated,
+    isDemo,
     userEmail,
     syncStatus,
     sessionIndicator,

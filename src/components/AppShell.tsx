@@ -24,6 +24,7 @@ export function AppShell({ session: s, children }: AppShellProps) {
       <AppHeader
         authChecked={s.authChecked}
         isAuthenticated={s.isAuthenticated}
+        isDemo={s.isDemo}
         userEmail={s.userEmail}
         syncStatus={s.syncStatus}
         sessionIndicator={s.sessionIndicator}
