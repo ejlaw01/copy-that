@@ -75,20 +75,24 @@ export const Turnstile = forwardRef<TurnstileHandle, TurnstileProps>(
 
     window.onTurnstileLoad = renderWidget;
 
-    const script = document.createElement("script");
-    script.src =
-      "https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTurnstileLoad";
-    script.async = true;
-    document.head.appendChild(script);
+    // Only inject the script once — Turnstile's SDK stays in memory
+    // after loading, so re-adding the tag triggers a "already loaded" warning.
+    const existing = document.querySelector(
+      'script[src*="challenges.cloudflare.com/turnstile"]'
+    );
+    if (!existing) {
+      const script = document.createElement("script");
+      script.src =
+        "https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTurnstileLoad";
+      script.async = true;
+      document.head.appendChild(script);
+    }
 
     return () => {
       if (widgetIdRef.current && window.turnstile) {
         window.turnstile.remove(widgetIdRef.current);
         widgetIdRef.current = null;
       }
-      // Clean up the script element and global callback to prevent
-      // accumulation on repeated mounts and stale callback references.
-      script.remove();
       delete window.onTurnstileLoad;
     };
   }, [renderWidget]);

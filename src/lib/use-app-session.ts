@@ -467,17 +467,23 @@ export function useAppSession() {
       if (!cancelled) setIsLoading(false);
     }
 
-    init();
+    // Track whether init() has finished so the auth listener can skip
+    // the initial SIGNED_IN event — init() already handles that case.
+    // Without this, Supabase fires onAuthStateChange(SIGNED_IN) on page
+    // load (session restore), causing a redundant /api/data fetch + re-render.
+    let initDone = false;
+    init().then(() => { initDone = true; });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (sessionStorage.getItem("copythat_demo") === "1") return;
         if (event === "SIGNED_IN" && session?.user) {
+          // Skip if init() already handled this user's session
+          if (!initDone || getSessionUserId() === session.user.id) return;
+
           setUserEmail(session.user.email ?? null);
           isAuthenticatedRef.current = true;
           setShowSavePrompt(false);
-
-          if (getSessionUserId() === session.user.id) return;
 
           let serverData: { brand_contexts: BrandContext[]; copy_blocks: CopyBlock[]; active_context_id: string | null } | null = null;
           try {

@@ -204,7 +204,7 @@ select {
   border: var(--border-hairline);
   border-radius: var(--radius-sm);
   padding: var(--space-4);
-  min-height: 3lh;
+  min-height: calc(3lh + 2 * var(--space-4));
   resize: vertical;
   outline: none;
   line-height: 1.7;
@@ -229,6 +229,7 @@ select {
   border: none;
   border-radius: var(--radius-sm);
   padding: var(--space-3) var(--space-6);
+  min-width: 7rem;
   cursor: pointer;
   transition: background 0.15s ease-out, transform 0.1s ease-out;
 }
