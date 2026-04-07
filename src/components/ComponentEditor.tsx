@@ -211,14 +211,14 @@ export const ComponentEditor = forwardRef<ComponentEditorHandle, ComponentEditor
   if (!editor) return null;
 
   return (
-    <div className="relative mt-5">
-      {/* Floating toolbar — overlaps top edge of the page */}
+    <div>
+      {/* Toolbar — sits above the editor page surface */}
       {!singleLine && (
-        <div className="absolute -top-4 left-0 right-0 z-10 flex justify-center">
+        <div className="relative flex justify-center mx-4" style={{ top: "1.5rem" }}>
           <div
             role="toolbar"
             aria-label="Formatting options"
-            className="inline-flex items-center gap-0.5 rounded-[--radius-lg] bg-ct-cream px-2.5 py-1.5 shadow-[var(--shadow-sm)]"
+            className="inline-flex flex-wrap justify-center items-center gap-0.5 rounded-[--radius-lg] bg-ct-cream px-2.5 py-1.5 shadow-[var(--shadow-sm)]"
           >
             {/* Inline formatting */}
             <ToolbarButton

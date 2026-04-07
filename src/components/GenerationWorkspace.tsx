@@ -1042,7 +1042,7 @@ export function GenerationWorkspace({
       {!hidden && (
         <>
           {/* Category + Prompt */}
-          <div className="mt-2 mb-6 pb-6 space-y-4">
+          <div className="mt-2 pb-2 space-y-4">
             {!currentBlock && (
               <>
                 <label className="ct-label pb-3">Settings</label>
