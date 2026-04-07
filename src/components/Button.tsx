@@ -2,7 +2,7 @@
 
 import { forwardRef } from "react";
 
-type ButtonVariant = "primary" | "secondary" | "danger" | "ghost" | "default";
+type ButtonVariant = "primary" | "secondary" | "danger" | "save" | "ghost" | "default";
 type ButtonSize = "sm" | "md";
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -14,6 +14,7 @@ const variantClasses: Record<ButtonVariant, string> = {
   primary: "ct-btn ct-btn-primary",
   secondary: "ct-btn ct-btn-secondary",
   danger: "ct-btn bg-ct-strike text-white",
+  save: "ct-btn bg-ct-positive text-white",
   default: "ct-btn",
   ghost: "font-ui text-ct-muted hover:text-ct-ink transition-colors",
 };
@@ -30,6 +31,7 @@ const sizeClasses: Record<ButtonSize, string> = {
  * - "primary"   → accent background, white text
  * - "secondary"  → cream background, hairline border
  * - "danger"     → strike-red background, white text
+ * - "save"       → positive-green background, white text
  * - "default"    → base ct-btn (cream bg, no accent)
  * - "ghost"      → text-only, muted → ink on hover
  *

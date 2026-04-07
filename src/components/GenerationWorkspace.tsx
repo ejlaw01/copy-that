@@ -1232,13 +1232,13 @@ export function GenerationWorkspace({
                   Download .md
                 </button>
                 <Button
-                  variant="primary"
+                  variant="save"
                   size="sm"
                   onClick={handleSaveVersion}
                   disabled={!canSave}
                   className="ml-auto disabled:opacity-40 disabled:cursor-default"
                 >
-                  Save Version
+                  Save
                 </Button>
               </div>
 
