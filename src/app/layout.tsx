@@ -24,6 +24,19 @@ const lato = Lato({
 export const metadata: Metadata = {
   title: "Copy That | Website Copy Generator",
   description: "Generate professional website copy for your small business. Powered by AI, built by Bit Lore.",
+  metadataBase: new URL("https://copy.bitlore.io"),
+  openGraph: {
+    title: "Copy That — AI Website Copy Generator",
+    description: "Create a voice profile, generate copy in your brand's voice, and edit in a real-time workspace. Free to use.",
+    url: "https://copy.bitlore.io",
+    siteName: "Copy That",
+    type: "website",
+  },
+  twitter: {
+    card: "summary",
+    title: "Copy That — AI Website Copy Generator",
+    description: "Create a voice profile, generate copy in your brand's voice, and edit in a real-time workspace.",
+  },
 };
 
 export default function RootLayout({

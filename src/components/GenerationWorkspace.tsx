@@ -1352,6 +1352,7 @@ export function GenerationWorkspace({
                                     });
                                   }}
                                   className="text-ct-muted hover:text-ct-muted transition-colors"
+                                  aria-label="Show full diff"
                                 >
                                   ...
                                 </button>
@@ -1367,6 +1368,7 @@ export function GenerationWorkspace({
                                     });
                                   }}
                                   className="block text-ct-muted hover:text-ct-muted transition-colors mt-0.5"
+                                  aria-label="Collapse diff"
                                 >
                                   show less
                                 </button>

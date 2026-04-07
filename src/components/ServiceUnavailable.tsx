@@ -15,8 +15,11 @@ export function ServiceUnavailable({ onDismiss }: ServiceUnavailableProps) {
   const [sent, setSent] = useState(false);
   const [sending, setSending] = useState(false);
 
+  const emailValid = !email || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!emailValid) return;
     setSending(true);
 
     await fetch("/api/contact", {
@@ -71,8 +74,13 @@ export function ServiceUnavailable({ onDismiss }: ServiceUnavailableProps) {
               placeholder="Your email (optional)"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="ct-input"
+              className={`ct-input ${email && !emailValid ? "border-ct-strike" : ""}`}
             />
+            {email && !emailValid && (
+              <p className="ct-helper" style={{ color: "var(--ct-strike)" }}>
+                Please enter a valid email address
+              </p>
+            )}
             <textarea
               id="contact-message"
               name="contact-message"
@@ -91,7 +99,7 @@ export function ServiceUnavailable({ onDismiss }: ServiceUnavailableProps) {
               <Button
                 variant="primary"
                 type="submit"
-                disabled={sending || !message.trim()}
+                disabled={sending || !message.trim() || !emailValid}
               >
                 {sending ? "Sending..." : "Send"}
               </Button>
