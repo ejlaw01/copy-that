@@ -31,9 +31,15 @@ function parseHash(): HashRoute {
  *    block switches within a profile)
  */
 export function useHashRoute() {
-  const [route, setRoute] = useState<HashRoute>(parseHash);
+  // Initialize with null/null to match the server render (no window.location
+  // available during SSR). The useEffect below immediately sets the real hash
+  // on mount, which keeps the first client paint in sync with the server
+  // and avoids a hydration mismatch.
+  const [route, setRoute] = useState<HashRoute>({ profileId: null, blockId: null });
 
   useEffect(() => {
+    // Set the real hash on mount (client-only)
+    setRoute(parseHash());
     function onHashChange() {
       setRoute(parseHash());
     }
