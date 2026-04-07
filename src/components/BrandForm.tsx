@@ -56,6 +56,14 @@ export function BrandForm({
 }: BrandFormProps) {
   return (
     <div className="space-y-4">
+      {isNew && (
+        <h2
+          className="font-display font-bold"
+          style={{ fontSize: "var(--text-2xl)" }}
+        >
+          Create Voice Profile
+        </h2>
+      )}
       <Field
         id="profile-name"
         label="Profile Name *"
@@ -139,12 +147,12 @@ export function BrandForm({
       {/* Save / Cancel / Delete buttons */}
       <div className="flex items-center gap-3 pt-2">
         {isNew ? (
-          <Button variant="primary" onClick={onSave} disabled={!canGenerate}>
-            Save Profile
+          <Button variant="save" onClick={onSave} disabled={!canGenerate}>
+            Save
           </Button>
         ) : (
           <>
-            <Button onClick={onSave}>
+            <Button variant="save" onClick={onSave}>
               Save
             </Button>
             {onCancel && (

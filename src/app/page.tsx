@@ -21,13 +21,11 @@ export default function Home() {
   if (s.isLoading) {
     return (
       <AppShell session={s}>
-        {!s.showHero && (
-          <main className="px-6 py-8">
-            <div className="mx-auto max-w-4xl flex items-center justify-center py-24">
-              <span className="text-sm text-ct-muted">Loading<AnimatedEllipsis /></span>
-            </div>
-          </main>
-        )}
+        <main className="px-6 py-8">
+          <div className="mx-auto max-w-4xl flex items-center justify-center py-24">
+            <span className="text-sm text-ct-muted">Loading<AnimatedEllipsis /></span>
+          </div>
+        </main>
       </AppShell>
     );
   }
@@ -36,6 +34,7 @@ export default function Home() {
   if (s.showHero) {
     return (
       <AppShell session={s}>
+        <div className="animate-fade-in">
         <LandingHero onStart={() => {
           document.getElementById("start")?.scrollIntoView({ behavior: "smooth" });
         }} />
@@ -50,6 +49,7 @@ export default function Home() {
             />
           </div>
         </main>
+        </div>
       </AppShell>
     );
   }
@@ -76,7 +76,7 @@ export default function Home() {
 
   function handleDeleteClick() {
     s.setConfirmDialog({
-      message: `Delete "${s.activeContext?.name || "this profile"}" and all its copy blocks?`,
+      message: `Delete "${s.activeContext?.name || "this voice profile"}" and all its copy blocks?`,
       onConfirm: () => {
         s.handleDelete(s.activeTab);
         s.setConfirmDialog(null);
@@ -111,6 +111,7 @@ export default function Home() {
   // ── Main app ───────────────────────────────────────────────────
   return (
     <AppShell session={s}>
+      <div className="animate-fade-in">
       <ProfileNav
         contexts={s.contexts}
         activeTab={s.activeTab}
@@ -175,6 +176,7 @@ export default function Home() {
           />}
         </div>
       </main>
+      </div>
     </AppShell>
   );
 }

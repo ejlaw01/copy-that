@@ -41,7 +41,7 @@ export function ProfileNav({
             onClick={onToggleMenu}
             className="flex items-center gap-1.5 text-base font-semibold font-ui text-ct-ink hover:text-ct-accent transition-colors cursor-pointer"
           >
-            {activeContext?.name || (activeTab === "new" ? "New Profile" : "Select Profile")}
+            {activeContext?.name || (activeTab === "new" ? "New Voice Profile" : "Select Voice Profile")}
             <ChevronDown size={14} className={`text-ct-muted transition-transform ${profileMenuOpen ? "rotate-180" : ""}`} />
           </button>
           {profileMenuOpen && (
@@ -73,7 +73,7 @@ export function ProfileNav({
                     className="w-full text-left px-3 py-2 text-sm font-ui text-ct-muted hover:text-ct-ink hover:bg-ct-rule transition-colors flex items-center gap-1.5"
                   >
                     <Plus size={12} />
-                    New Profile
+                    New Voice Profile
                   </button>
                 </>
               )}
@@ -88,7 +88,7 @@ export function ProfileNav({
             <button
               onClick={onEditClick}
               className="shrink-0 text-ct-muted hover:text-ct-ink transition-colors"
-              aria-label="Edit profile"
+              aria-label="Edit voice profile"
             >
               <Pencil size={16} />
             </button>
