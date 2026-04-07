@@ -1046,11 +1046,11 @@ export function GenerationWorkspace({
             {!currentBlock && (
               <>
                 <label className="ct-label pb-3">Settings</label>
-                <div className="flex flex-wrap items-center gap-3">
+                <div className="flex flex-col gap-3 md:flex-row md:flex-wrap md:items-center">
                   <div ref={categoryRef} className="relative">
                     <button
                       onClick={() => setCategoryOpen((prev) => !prev)}
-                      className="flex items-center gap-1.5 text-base font-semibold font-ui text-ct-ink hover:text-ct-accent border border-ct-rule rounded-[--radius-md] px-3 py-1.5 transition-colors cursor-pointer"
+                      className="flex items-center justify-between gap-1.5 text-base font-semibold font-ui text-ct-ink hover:text-ct-accent border border-ct-rule rounded-[--radius-md] px-3 py-1.5 min-w-[8rem] transition-colors cursor-pointer"
                     >
                       {CONTENT_CATEGORIES[category]?.label ?? category}
                       <ChevronDown
@@ -1101,11 +1101,11 @@ export function GenerationWorkspace({
                       </div>
                     )}
                   </div>
-                  <span className="text-xs text-ct-muted flex-1 basis-48">
+                  <span className="text-xs text-ct-muted flex-1 md:basis-48">
                     {CONTENT_CATEGORIES[category]?.guidance ??
                       "Follow the user's prompt closely."}
                   </span>
-                  <label className="shrink-0 flex items-center gap-1.5 text-xs text-ct-muted">
+                  <label className="shrink-0 flex flex-col md:flex-row md:items-center gap-1.5 text-xs text-ct-muted">
                     Max chars
                     <input
                       id="max-chars"
