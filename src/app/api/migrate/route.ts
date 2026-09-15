@@ -69,10 +69,12 @@ export async function POST(req: NextRequest) {
   // Migrate copy blocks
   if (Array.isArray(copy_blocks) && copy_blocks.length > 0) {
     const blocks = copy_blocks
-      .map((block: { brand_context_id: string; component_type: string; title?: string; user_prompt?: string; content: unknown; ai_notes: unknown; version: number; slug?: string }) => {
+      // flatMap instead of map + filter(Boolean): returning [] drops orphaned
+      // blocks and TypeScript infers a null-free array for insert().
+      .flatMap((block: { brand_context_id: string; component_type: string; title?: string; user_prompt?: string; content: unknown; ai_notes: unknown; version: number; slug?: string }) => {
         const newContextId = idMap.get(block.brand_context_id);
-        if (!newContextId) return null;
-        return {
+        if (!newContextId) return [];
+        return [{
           brand_context_id: newContextId,
           component_type: block.component_type,
           title: block.title ?? "",
@@ -81,9 +83,8 @@ export async function POST(req: NextRequest) {
           ai_notes: block.ai_notes,
           version: block.version,
           slug: block.slug ?? "",
-        };
-      })
-      .filter(Boolean);
+        }];
+      });
 
     if (blocks.length > 0) {
       const { error } = await supabase.from("copy_blocks").insert(blocks);
