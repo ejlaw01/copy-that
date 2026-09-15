@@ -2,6 +2,10 @@ import Anthropic from "@anthropic-ai/sdk";
 
 export const anthropic = new Anthropic();
 
+// Single source of truth for the model ID. Dated snapshot IDs get retired
+// (the API then returns 404 not_found_error), so keep this in one place.
+export const MODEL = "claude-sonnet-5";
+
 export class ServiceUnavailableError extends Error {
   public kind: "spend_limit" | "temporary";
 
@@ -27,7 +31,7 @@ export function streamPrompt(
   maxTokens = 2048
 ) {
   return anthropic.messages.stream({
-    model: "claude-sonnet-4-20250514",
+    model: MODEL,
     max_tokens: maxTokens,
     system,
     messages: [{ role: "user", content: user }],
@@ -41,7 +45,7 @@ export async function prompt(
 ): Promise<string> {
   try {
     const res = await anthropic.messages.create({
-      model: "claude-sonnet-4-20250514",
+      model: MODEL,
       max_tokens: maxTokens,
       system,
       messages: [{ role: "user", content: user }],
